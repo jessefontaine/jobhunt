@@ -84,3 +84,19 @@ def test_build_digest_excludes_expired(tmp_path):
     path = pipeline.build_digest(store, tmp_path / "digests", date(2026, 9, 17), pipeline.RunInfo())
     md = path.read_text()
     assert "Open" in md and "Gone" not in md
+
+
+def test_build_digest_limit_keeps_best_scored_then_unscored(tmp_path):
+    from jobhunt.models import Score
+
+    store = Store(tmp_path / "db")
+    listings = [Listing(source="s", title=f"J{n}", employer="U", url=f"u{n}") for n in range(6)]
+    store.upsert_listings(listings)
+    store.save_scores([Score(listing_id=listings[n].id, score=n * 10) for n in range(4)])
+    path = pipeline.build_digest(
+        store, tmp_path / "digests", date(2026, 9, 17), pipeline.RunInfo(), limit=3
+    )
+    md = path.read_text()
+    assert "J3" in md and "J2" in md and "J1" in md
+    assert "J0" not in md and "J4" not in md and "J5" not in md
+    assert "showing 3 of 6" in md

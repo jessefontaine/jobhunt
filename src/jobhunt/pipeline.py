@@ -50,10 +50,21 @@ def _fetch_details(store: Store, http: Any, source: Any, listings: list[Listing]
     return errors
 
 
-def build_digest(store: Store, digests_dir: Path, today: date, info: RunInfo) -> Path:
-    """Write a digest of every unexpired, not-yet-rated listing; return its path."""
+def build_digest(
+    store: Store, digests_dir: Path, today: date, info: RunInfo, limit: int | None = None
+) -> Path:
+    """Write a digest of unexpired, not-yet-rated listings (best `limit` first); return its path."""
     listings = store.candidate_listings(today)
     scores = store.get_scores([lst.id for lst in listings])
+    if limit is not None and len(listings) > limit:
+        scored = sorted(
+            (lst for lst in listings if lst.id in scores),
+            key=lambda lst: scores[lst.id].score,
+            reverse=True,
+        )
+        unscored = [lst for lst in listings if lst.id not in scores]
+        info.total = len(listings)
+        listings = (scored + unscored)[:limit]
     path = digest_path(digests_dir, today)
     path.write_text(render_digest(today, listings, scores, info))
     return path

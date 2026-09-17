@@ -94,7 +94,10 @@ def score(
 @app.command()
 def digest(ctx: typer.Context) -> None:
     """Write a ranked digest of unrated listings to digests/."""
-    path = pipeline.build_digest(ctx.obj.store, ctx.obj.paths.digests, date.today(), RunInfo())
+    c: Ctx = ctx.obj
+    path = pipeline.build_digest(
+        c.store, c.paths.digests, date.today(), RunInfo(), limit=c.config.digest.limit
+    )
     typer.echo(f"digest: {path}")
 
 
@@ -110,7 +113,9 @@ def check(
     info = _fetch(c, source, fixture)
     if not no_score:
         _score(c)
-    path = pipeline.build_digest(c.store, c.paths.digests, date.today(), info)
+    path = pipeline.build_digest(
+        c.store, c.paths.digests, date.today(), info, limit=c.config.digest.limit
+    )
     typer.echo(f"digest: {path}")
 
 

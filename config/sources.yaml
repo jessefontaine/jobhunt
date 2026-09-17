@@ -7,6 +7,9 @@ scoring:
   batch_size: 10       # listings per Claude call
   examples: 20         # rated listings included as few-shot examples
 
+digest:
+  limit: 60            # entries per digest, best scores first (the rest wait for the next run)
+
 sources:
   academictransfer:
     enabled: true
@@ -79,11 +82,11 @@ sources:
         manual: true       # JS-rendered; also on AcademicTransfer
 
   indeed:
-    enabled: false     # Phase 5 — best effort; falls back to a manual search link
-    queries: [neuroscience, "cognitive psychology research", "research scientist brain"]
+    enabled: true      # manual only: Indeed blocks scrapers, so this just adds links to the digest
+    queries: [neuroscience, "cognitive psychology research"]
     location: Nederland
 
   linkedin:
-    enabled: false     # Phase 5 — best effort; falls back to a manual search link
-    queries: [neuroscience, "cognitive science research"]
+    enabled: true      # best effort via the public guest search (last 30 days); manual link if blocked
+    queries: [neuroscience, "cognitive neuroscience", "computational neuroscience", "research assistant psychology"]
     location: Netherlands

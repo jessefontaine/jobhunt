@@ -49,9 +49,14 @@ class ScoringConfig(BaseModel):
     examples: int = 20
 
 
+class DigestConfig(BaseModel):
+    limit: int = 60  # entries per digest, best scores first
+
+
 @dataclass
 class Config:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
+    digest: DigestConfig = field(default_factory=DigestConfig)
     sources: dict[str, Any] = field(default_factory=dict)
 
     def enabled_sources(self) -> list[str]:
@@ -78,5 +83,6 @@ def load_config(root: Path) -> Config:
     data = yaml.safe_load(paths.sources_yaml.read_text()) or {}
     return Config(
         scoring=ScoringConfig(**(data.get("scoring") or {})),
+        digest=DigestConfig(**(data.get("digest") or {})),
         sources=data.get("sources") or {},
     )

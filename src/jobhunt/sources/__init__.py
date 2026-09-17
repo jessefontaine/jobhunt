@@ -9,6 +9,8 @@ from jobhunt.sources.academictransfer import AcademicTransferSource
 from jobhunt.sources.base import Source, SourceResult
 from jobhunt.sources.euraxess import EuraxessSource
 from jobhunt.sources.fixture import FixtureSource
+from jobhunt.sources.indeed import IndeedSource
+from jobhunt.sources.linkedin import LinkedInSource
 from jobhunt.sources.pages import PagesSource
 
 _SOURCES: dict[str, type] = {
@@ -16,6 +18,8 @@ _SOURCES: dict[str, type] = {
     AcademicTransferSource.name: AcademicTransferSource,
     EuraxessSource.name: EuraxessSource,
     PagesSource.name: PagesSource,
+    IndeedSource.name: IndeedSource,
+    LinkedInSource.name: LinkedInSource,
 }
 
 

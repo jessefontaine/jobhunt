@@ -42,3 +42,7 @@ def test_load_config_defaults_when_file_missing(tmp_path):
     cfg = load_config(tmp_path)
     assert cfg.scoring.model == "sonnet"
     assert cfg.enabled_sources() == []
+
+
+def test_digest_limit_config_default(tmp_path):
+    assert load_config(tmp_path).digest.limit == 60

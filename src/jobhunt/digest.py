@@ -23,6 +23,7 @@ class RunInfo:
     new: int = 0
     errors: dict[str, str] = field(default_factory=dict)
     manual: dict[str, str] = field(default_factory=dict)  # label -> url
+    total: int | None = None  # candidates before the digest limit was applied
 
 
 def _meta_line(lst: Listing, score: Score | None) -> str:
@@ -65,6 +66,8 @@ def render_digest(
     scored.sort(key=lambda lst: scores[lst.id].score, reverse=True)
 
     header = [f"New: {info.new}", f"Unscored: {len(unscored)}"]
+    if info.total is not None and info.total > len(listings):
+        header.append(f"showing {len(listings)} of {info.total}")
     if info.errors:
         errs = ", ".join(f"{name} ({msg})" for name, msg in info.errors.items())
         header.append(f"Source errors: {errs}")
