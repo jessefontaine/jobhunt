@@ -1,0 +1,44 @@
+[project]
+name = "jobhunt"
+version = "0.1.0"
+description = "Personal job-hunt pipeline: fetch Dutch research/PhD listings, score them against a profile, learn from ratings."
+readme = "README.md"
+authors = [
+    { name = "Jesse Fontaine", email = "jesse.fontaine98@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
+    "pydantic>=2.7",
+    "typer>=0.12",
+]
+
+[project.scripts]
+jobhunt = "jobhunt.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "pypdf>=4.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/jobhunt/cli.py" = ["B008"]  # typer.Option() in defaults is the typer idiom

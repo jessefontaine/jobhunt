@@ -1,0 +1,24 @@
+"""Registry of job sources.
+
+Add a source: write the module, list it here, enable it in sources.yaml.
+"""
+
+from __future__ import annotations
+
+from jobhunt.sources.base import Source, SourceResult
+from jobhunt.sources.fixture import FixtureSource
+
+_SOURCES: dict[str, type] = {
+    FixtureSource.name: FixtureSource,
+}
+
+
+def get_source(name: str) -> Source:
+    return _SOURCES[name]()
+
+
+def list_sources() -> list[str]:
+    return sorted(_SOURCES)
+
+
+__all__ = ["Source", "SourceResult", "get_source", "list_sources"]

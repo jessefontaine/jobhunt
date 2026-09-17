@@ -1,0 +1,38 @@
+# Which sources `jobhunt fetch` pulls from, and how scoring runs.
+# Add a source: write src/jobhunt/sources/<name>.py, register it in sources/__init__.py,
+# then enable it here.
+
+scoring:
+  model: sonnet        # passed to `claude -p --model`
+  batch_size: 10       # listings per Claude call
+  examples: 20         # rated listings included as few-shot examples
+
+sources:
+  academictransfer:
+    enabled: false     # enabled in Phase 2
+    queries:
+      - neuroscience
+      - cognitive neuroscience
+      - fMRI
+      - computational neuroscience
+      - machine learning brain
+      - psychology
+
+  euraxess:
+    enabled: false     # Phase 4
+    country: Netherlands
+    keywords: [neuroscience, cognitive, fMRI, computational]
+
+  pages:
+    enabled: false     # Phase 4 — generic selector-driven scraper; URLs/selectors verified then
+    pages: []
+
+  indeed:
+    enabled: false     # Phase 5 — best effort; falls back to a manual search link
+    queries: [neuroscience, "cognitive psychology research", "research scientist brain"]
+    location: Nederland
+
+  linkedin:
+    enabled: false     # Phase 5 — best effort; falls back to a manual search link
+    queries: [neuroscience, "cognitive science research"]
+    location: Netherlands
