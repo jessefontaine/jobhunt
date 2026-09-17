@@ -11,6 +11,15 @@ ATTEMPTS = 3
 USER_AGENT = "jobhunt/0.1 (personal job search)"
 
 
+def _retry_delay(exc: Exception, attempt: int) -> float:
+    """Retry-After (seconds) when the server sends one, else exponential backoff."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        header = exc.response.headers.get("Retry-After", "")
+        if header.isdigit():
+            return float(header)
+    return 2.0**attempt
+
+
 class PoliteClient:
     def __init__(
         self,
@@ -33,7 +42,7 @@ class PoliteClient:
         self.attempts = ATTEMPTS
 
     def get_text(self, url: str) -> str:
-        """GET `url`; retries 5xx/transport errors up to 3 attempts with 2 s, 4 s backoff.
+        """GET `url`; retries 5xx/429/transport errors up to 3 attempts (2 s, 4 s backoff).
 
         Raises httpx.HTTPStatusError on a final 4xx/5xx.
         """
@@ -46,12 +55,13 @@ class PoliteClient:
                 return response.text
             except (httpx.HTTPStatusError, httpx.TransportError) as exc:
                 self._last = self._clock()
-                retryable = isinstance(exc, httpx.TransportError) or (
-                    exc.response.status_code >= 500
+                status = (
+                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
                 )
+                retryable = status is None or status >= 500 or status == 429
                 if not retryable or attempt == self.attempts:
                     raise
-                self._sleep(2.0**attempt)
+                self._sleep(_retry_delay(exc, attempt))
         raise AssertionError("unreachable")
 
     def _throttle(self) -> None:

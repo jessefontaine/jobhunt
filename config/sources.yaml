@@ -19,9 +19,13 @@ sources:
       - psychology
 
   euraxess:
-    enabled: false     # Phase 4
+    enabled: true
+    # NOTE (2026-09): the site currently ignores its own keyword/country filters, so results
+    # are post-filtered on the Work Locations country. Expect few hits until the site is fixed.
     country: Netherlands
-    keywords: [neuroscience, cognitive, fMRI, computational]
+    country_id: 798
+    keywords: [neuroscience, cognitive]
+    pages: 2           # 10 results per page, per keyword; the site rate-limits (429) quickly
 
   pages:
     enabled: false     # Phase 4 — generic selector-driven scraper; URLs/selectors verified then

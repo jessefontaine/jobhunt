@@ -7,11 +7,13 @@ from __future__ import annotations
 
 from jobhunt.sources.academictransfer import AcademicTransferSource
 from jobhunt.sources.base import Source, SourceResult
+from jobhunt.sources.euraxess import EuraxessSource
 from jobhunt.sources.fixture import FixtureSource
 
 _SOURCES: dict[str, type] = {
     FixtureSource.name: FixtureSource,
     AcademicTransferSource.name: AcademicTransferSource,
+    EuraxessSource.name: EuraxessSource,
 }
 
 

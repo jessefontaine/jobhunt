@@ -90,3 +90,18 @@ def test_get_text_gives_up_after_three_attempts():
         with pytest.raises(httpx.HTTPStatusError):
             http.get_text("https://example.org/x")
     assert len(attempts) == 3
+
+
+def test_get_text_retries_429_honouring_retry_after():
+    attempts = []
+    sleeps = []
+
+    def handler(request):
+        attempts.append(1)
+        if len(attempts) == 1:
+            return httpx.Response(429, text="slow down", headers={"Retry-After": "7"})
+        return httpx.Response(200, text="ok")
+
+    with make(handler, min_interval=0, sleep=sleeps.append, clock=lambda: 0.0) as http:
+        assert http.get_text("https://example.org/x") == "ok"
+    assert sleeps == [7.0]
