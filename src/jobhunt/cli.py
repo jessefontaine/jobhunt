@@ -45,10 +45,10 @@ def _source_list(ctx: Ctx, only: str | None, fixture: Path | None) -> list[tuple
 
 
 def _fetch(ctx: Ctx, only: str | None, fixture: Path | None) -> RunInfo:
-    from jobhunt.sources.http import make_client
+    from jobhunt.sources.http import PoliteClient
 
     sources = _source_list(ctx, only, fixture)
-    with make_client() as http:
+    with PoliteClient() as http:
         info = pipeline.fetch_sources(ctx.store, http, sources)
     typer.echo(f"fetched: {info.new} new listing(s) from {len(sources)} source(s)")
     for name, err in info.errors.items():

@@ -9,7 +9,7 @@ scoring:
 
 sources:
   academictransfer:
-    enabled: false     # enabled in Phase 2
+    enabled: true
     queries:
       - neuroscience
       - cognitive neuroscience

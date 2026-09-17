@@ -105,6 +105,12 @@ class Store:
                 )
         return new
 
+    def set_description(self, listing_id: str, description: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE listings SET description = ? WHERE id = ?", (description, listing_id)
+            )
+
     def count_listings(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
 

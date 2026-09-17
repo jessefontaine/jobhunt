@@ -7,25 +7,47 @@ from pathlib import Path
 from typing import Any
 
 from jobhunt.digest import RunInfo, digest_path, render_digest
+from jobhunt.models import Listing
 from jobhunt.sources import get_source
 from jobhunt.store import Store
 
 
 def fetch_sources(store: Store, http: Any, sources: list[tuple[str, dict]]) -> RunInfo:
-    """Run each (name, cfg) source, upsert results, collect errors. Never raises for a source."""
+    """Run each (name, cfg) source, upsert results, fetch details for new listings.
+
+    Never raises for a source; problems end up in RunInfo.errors.
+    """
     info = RunInfo()
     for name, cfg in sources:
         try:
-            result = get_source(name).fetch(cfg, http)
+            source = get_source(name)
+            result = source.fetch(cfg, http)
         except Exception as exc:  # a source bug must not kill the run
             info.errors[name] = f"{type(exc).__name__}: {exc}"
             continue
         new = store.upsert_listings(result.listings)
         info.new += len(new)
-        if result.errors:
-            info.errors[name] = "; ".join(result.errors)
+        errors = list(result.errors)
+        errors += _fetch_details(
+            store, http, source, [lst for lst in result.listings if lst.id in new]
+        )
+        if errors:
+            info.errors[name] = "; ".join(errors)
         info.manual.update(result.manual_urls)
     return info
+
+
+def _fetch_details(store: Store, http: Any, source: Any, listings: list[Listing]) -> list[str]:
+    fetch_detail = getattr(source, "fetch_detail", None)
+    if fetch_detail is None:
+        return []
+    errors: list[str] = []
+    for lst in listings:
+        try:
+            store.set_description(lst.id, fetch_detail(lst.url, http))
+        except Exception as exc:
+            errors.append(f"detail {lst.url}: {type(exc).__name__}: {exc}")
+    return errors
 
 
 def build_digest(store: Store, digests_dir: Path, today: date, info: RunInfo) -> Path:
