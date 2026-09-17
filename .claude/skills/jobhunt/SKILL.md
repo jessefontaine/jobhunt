@@ -1,0 +1,43 @@
+---
+name: jobhunt
+description: Use when the user wants to check for new job listings, see their job digest, or rate/record feedback on listings in this repo (the `jobhunt` CLI, digests/, ratings).
+---
+
+# jobhunt
+
+Run the pipeline through the CLI and rate through the digest file. Never score or rank listings
+yourself — `jobhunt score` does that, so results stay reproducible and the ratings loop stays intact.
+
+## Commands (run from the repo root)
+
+| Task | Command |
+|------|---------|
+| Full run: fetch → score → digest | `uv run jobhunt check` (takes minutes: polite 1 req/s scraping) |
+| Only re-render the digest | `uv run jobhunt digest` |
+| Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |
+| Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` alphabetically — don't trust `ls | tail`) |
+
+## Presenting a digest
+
+Read the newest digest and show the top N (default 10) as a numbered list, one line each:
+`N. Title — Employer · score S · role · deadline D · [link]`, then the digest's **Why** line.
+Mention the header's `Source errors` / `Manual:` links if present. Skip `## Unscored` entries
+unless asked.
+
+## Recording ratings the user gives in chat
+
+Each digest entry has `<!-- id: … -->`, `rating:` and `note:` lines. For each rating:
+1. Find the entry by its number heading (`## 3. …`), fill `rating: <1-5>` and `note: <text>`
+   (leave `note:` empty if none). Edit those two lines only.
+2. Run `uv run jobhunt rate`. Report the `N rating(s) ingested` line and the `preferences:` line.
+
+Scale: 5 apply · 4 strong · 3 maybe · 2 not really · 1 irrelevant.
+
+## Known failure modes
+
+| Output | Meaning / what to do |
+|--------|----------------------|
+| `preferences: failed` or scoring errors mentioning `OAuth session expired` / `authenticate` | The shell `claude` CLI is logged out. Ratings are still saved. Tell the user to run `claude login` in a terminal, then `uv run jobhunt rate --force` (or `uv run jobhunt score`). Don't call `claude -p` yourself to diagnose. |
+| `preferences: skipped (fewer than 3 new ratings…)` | Normal. Nothing to do unless the user wants `--force`. |
+| `Source errors: … 429` / `502` | Transient site rate-limits; the run continued. Mention it, don't retry. |
+| `Manual: [Indeed: …]` links | Indeed blocks scrapers; these are saved searches for the user to open. |
