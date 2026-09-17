@@ -284,3 +284,25 @@ class Store:
             (today.isoformat(),),
         ).fetchall()
         return [self._row_to_listing(r) for r in rows]
+
+    def all_ratings(self) -> list[tuple[Listing, Rating]]:
+        """Every rated listing, most recent rating first."""
+        rows = self.conn.execute(
+            """
+            SELECT l.*, r.rating AS r_rating, r.note AS r_note, r.digest AS r_digest,
+                   r.rated_at AS r_rated_at
+            FROM ratings r JOIN listings l ON l.id = r.listing_id
+            ORDER BY r.rated_at DESC, l.rowid DESC
+            """
+        ).fetchall()
+        return [(self._row_to_listing(row), self._row_to_joined_rating(row)) for row in rows]
+
+    @staticmethod
+    def _row_to_joined_rating(row: sqlite3.Row) -> Rating:
+        return Rating(
+            listing_id=row["id"],
+            rating=row["r_rating"],
+            note=row["r_note"],
+            digest=row["r_digest"],
+            rated_at=datetime.fromisoformat(row["r_rated_at"]),
+        )

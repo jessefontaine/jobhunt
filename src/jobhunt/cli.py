@@ -11,11 +11,16 @@ import typer
 from jobhunt import pipeline
 from jobhunt.config import Config, Paths, find_root, load_config
 from jobhunt.digest import RunInfo, newest_digest
-from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl
+from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl, regenerate_preferences
+from jobhunt.scoring import claude_runner, score_listings
 from jobhunt.sources import list_sources
 from jobhunt.store import Store
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
+
+# Swapped for a fake in tests; everything that talks to Claude goes through this.
+RUNNER = claude_runner
+MIN_RATINGS_TO_LEARN = 3
 
 
 @dataclass
@@ -66,6 +71,26 @@ def fetch(
     _fetch(ctx.obj, source, fixture)
 
 
+def _score(ctx: Ctx, dry_run: bool = False) -> None:
+    result = score_listings(
+        ctx.store, ctx.paths, ctx.config.scoring, RUNNER, date.today(), dry_run=dry_run
+    )
+    if dry_run:
+        return
+    typer.echo(f"scored: {result.scored} listing(s), {result.failed} failed")
+    for err in result.errors:
+        typer.echo(f"  ! scoring: {err}", err=True)
+
+
+@app.command()
+def score(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the first prompt and stop"),
+) -> None:
+    """Score unscored listings with Claude (`claude -p`)."""
+    _score(ctx.obj, dry_run=dry_run)
+
+
 @app.command()
 def digest(ctx: typer.Context) -> None:
     """Write a ranked digest of unrated listings to digests/."""
@@ -83,6 +108,8 @@ def check(
     """fetch → score → digest, in one go."""
     c: Ctx = ctx.obj
     info = _fetch(c, source, fixture)
+    if not no_score:
+        _score(c)
     path = pipeline.build_digest(c.store, c.paths.digests, date.today(), info)
     typer.echo(f"digest: {path}")
 
@@ -92,6 +119,7 @@ def rate(
     ctx: typer.Context,
     digest_file: Path | None = typer.Argument(None, help="Digest to read (default: newest)"),
     no_learn: bool = typer.Option(False, "--no-learn", help="Skip preferences regeneration"),
+    force: bool = typer.Option(False, "--force", help="Regenerate preferences even if few new"),
     rebuild: bool = typer.Option(False, help="Replay data/ratings.jsonl into the store first"),
 ) -> None:
     """Ingest the ratings you wrote into a digest."""
@@ -109,6 +137,16 @@ def rate(
     for err in result.errors:
         typer.echo(f"  ! {digest_file.name}: {err}", err=True)
     typer.echo(f"{result.added} rating(s) ingested from {digest_file.name}")
+    if no_learn:
+        return
+    if result.added < MIN_RATINGS_TO_LEARN and not force:
+        typer.echo(
+            f"preferences: skipped (fewer than {MIN_RATINGS_TO_LEARN} new ratings; "
+            "use --force to regenerate anyway)"
+        )
+        return
+    ok = regenerate_preferences(c.paths, store, RUNNER, c.config.scoring.model)
+    typer.echo("preferences: updated" if ok else "preferences: failed (file left untouched)")
 
 
 @app.command()
