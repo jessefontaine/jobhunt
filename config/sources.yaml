@@ -28,8 +28,55 @@ sources:
     pages: 2           # 10 results per page, per keyword; the site rate-limits (429) quickly
 
   pages:
-    enabled: false     # Phase 4 — generic selector-driven scraper; URLs/selectors verified then
-    pages: []
+    enabled: true
+    # Generic selector-driven scraper. Each entry: name, url, item (CSS, one per vacancy), and
+    # optional title/link/location/deadline/summary selectors, allow_empty, or manual: true
+    # (JS-only sites — just linked in the digest header for you to check by hand).
+    # Universities and UMCs post on AcademicTransfer already; list places that don't.
+    pages:
+      - name: Netherlands Institute for Neuroscience
+        url: https://nin.nl/vacancies/
+        item: article.vacancies-big-card
+        title: h3
+        link: a.overlay-link
+        allow_empty: true
+      - name: TNO (neuro)
+        url: https://www.tno.nl/en/careers/vacancies/?zoeken_term=neuro
+        item: div.ipx-pt-vacancy
+        title: h3
+        link: a
+        location: dd.extra-werklocatie
+        allow_empty: true
+      - name: TNO (cognitive)
+        url: https://www.tno.nl/en/careers/vacancies/?zoeken_term=cognitive
+        item: div.ipx-pt-vacancy
+        title: h3
+        link: a
+        location: dd.extra-werklocatie
+        allow_empty: true
+      - name: TNO (perception)
+        url: https://www.tno.nl/en/careers/vacancies/?zoeken_term=perception
+        item: div.ipx-pt-vacancy
+        title: h3
+        link: a
+        location: dd.extra-werklocatie
+        allow_empty: true
+      - name: TNO (human factors)
+        url: https://www.tno.nl/en/careers/vacancies/?zoeken_term=human+factors
+        item: div.ipx-pt-vacancy
+        title: h3
+        link: a
+        location: dd.extra-werklocatie
+        allow_empty: true
+      - name: Spinoza Centre vacancies
+        url: https://www.spinozacentre.nl/opportunities/vacancies/
+        manual: true       # "no open positions" page with no list markup yet; check by hand
+      - name: Amsterdam UMC vacancies
+        url: https://werkenbij.amsterdamumc.org/vacatures?q=neuro
+        manual: true       # JS-rendered; also on AcademicTransfer
+      - name: Donders Institute vacancies
+        url: https://www.ru.nl/en/working-at/vacancies
+        manual: true       # JS-rendered; also on AcademicTransfer
 
   indeed:
     enabled: false     # Phase 5 — best effort; falls back to a manual search link
