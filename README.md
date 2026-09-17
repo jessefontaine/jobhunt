@@ -11,6 +11,12 @@ Design spec: [docs/superpowers/specs/2026-09-17-jobhunt-design.md](docs/superpow
 uv run jobhunt check          # fetch new listings → score with Claude → write digests/<today>.md
 ```
 
+Or, inside Claude Code in this folder, type `/jobhunt` — it runs the same command, shows the top
+matches in chat, and records the ratings you give conversationally.
+
+Scoring uses the `claude` CLI on your subscription (`claude -p`), so the CLI must be logged in:
+if you see `OAuth session expired` / `preferences: failed`, run `claude login` once in a terminal.
+
 Open the newest digest, fill in `rating:` (1–5) and optionally `note:` under each listing:
 
 | rating | meaning |
@@ -25,10 +31,31 @@ Open the newest digest, fill in `rating:` (1–5) and optionally `note:` under e
 uv run jobhunt rate           # ingest ratings from the newest digest, update profile/preferences.md
 ```
 
-Repeat. Rated listings never reappear; unrated ones do until you rate them.
+Repeat. Rated listings never reappear; unrated ones do until you rate them. `jobhunt rate`
+regenerates the `## Learned` rules in `profile/preferences.md` once you have given ≥3 new ratings
+(`--force` to do it anyway); the next `score` run reads them plus your rated listings as examples.
 
-Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`, `jobhunt sources`,
-`jobhunt rate --rebuild` (replay `data/ratings.jsonl` into a fresh database).
+Other commands: `jobhunt fetch [--source X]`, `jobhunt score [--dry-run]`, `jobhunt digest`,
+`jobhunt sources`, `jobhunt rate --rebuild` (replay `data/ratings.jsonl` into a fresh database).
+
+## Sources
+
+| source | status |
+|--------|--------|
+| `academictransfer` | Fully automated. 10 newest per query, sorted by publish date, detail pages fetched. |
+| `euraxess` | Automated, but the site currently ignores its own keyword/country filters (Sept 2026), so results are post-filtered to Netherlands and usually empty. Rate-limits (429) quickly. |
+| `pages` | Selector-driven scraper for institute pages: NIN and TNO keyword searches. Spinoza, Amsterdam UMC, Donders are `manual: true` links (no list markup / JS-only). |
+| `linkedin` | Public guest search, last 30 days, detail pages fetched. Falls back to a manual link if LinkedIn shows its sign-in wall. Noisy — the scorer sorts it out. |
+| `indeed` | Manual only: Indeed blocks scrapers with a CAPTCHA, so the digest just links the saved searches. |
+
+Fetching is polite (1 request/s, retries with backoff), so a full `check` takes several minutes
+the first time and ~1–2 minutes afterwards (only new listings get detail pages and scores).
+
+## Scheduling (later)
+
+Once the pipeline is trustworthy, a systemd user timer or cron entry running
+`cd ~/Documents/jobhunt && uv run jobhunt check` daily is all that's needed; the digest lands in
+`digests/` for you to rate whenever.
 
 ## What's where
 
