@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 import httpx
 
+ATTEMPTS = 3
 USER_AGENT = "jobhunt/0.1 (personal job search)"
 
 
@@ -29,19 +30,35 @@ class PoliteClient:
         self._clock = clock
         self._sleep = sleep
         self._last: float | None = None
+        self.attempts = ATTEMPTS
 
     def get_text(self, url: str) -> str:
-        """GET `url`, raising httpx.HTTPStatusError on 4xx/5xx."""
+        """GET `url`; retries 5xx/transport errors up to 3 attempts with 2 s, 4 s backoff.
+
+        Raises httpx.HTTPStatusError on a final 4xx/5xx.
+        """
+        for attempt in range(1, self.attempts + 1):
+            self._throttle()
+            try:
+                response = self._client.get(url)
+                self._last = self._clock()
+                response.raise_for_status()
+                return response.text
+            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+                self._last = self._clock()
+                retryable = isinstance(exc, httpx.TransportError) or (
+                    exc.response.status_code >= 500
+                )
+                if not retryable or attempt == self.attempts:
+                    raise
+                self._sleep(2.0**attempt)
+        raise AssertionError("unreachable")
+
+    def _throttle(self) -> None:
         if self._last is not None:
             wait = self._min_interval - (self._clock() - self._last)
             if wait > 0:
                 self._sleep(wait)
-        try:
-            response = self._client.get(url)
-        finally:
-            self._last = self._clock()
-        response.raise_for_status()
-        return response.text
 
     def close(self) -> None:
         self._client.close()
