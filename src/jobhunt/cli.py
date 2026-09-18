@@ -66,7 +66,7 @@ def _fetch(ctx: Ctx, only: str | None, fixture: Path | None) -> RunInfo:
     from jobhunt.sources.http import PoliteClient
 
     sources = _source_list(ctx, only, fixture)
-    with PoliteClient() as http:
+    with PoliteClient(contact=ctx.config.contact) as http:
         info = pipeline.fetch_sources(ctx.store, http, sources, progress=typer.echo)
     typer.echo(f"fetched: {info.new} new listing(s) from {len(sources)} source(s)")
     for name, err in info.errors.items():

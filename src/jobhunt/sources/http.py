@@ -8,7 +8,11 @@ from collections.abc import Callable
 import httpx
 
 ATTEMPTS = 3
-USER_AGENT = "jobhunt/0.1 (personal job search)"
+
+
+def _user_agent(contact: str | None) -> str:
+    base = "jobhunt/0.1 (personal job search"
+    return f"{base}; contact: {contact})" if contact else f"{base})"
 
 
 def _retry_delay(exc: Exception, attempt: int) -> float:
@@ -28,9 +32,11 @@ class PoliteClient:
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        contact: str | None = None,
     ):
+        self.user_agent = _user_agent(contact)
         self._client = httpx.Client(
-            headers={"User-Agent": USER_AGENT, "Accept-Language": "en,nl;q=0.8"},
+            headers={"User-Agent": self.user_agent, "Accept-Language": "en,nl;q=0.8"},
             timeout=timeout,
             follow_redirects=True,
             transport=transport,

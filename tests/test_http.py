@@ -105,3 +105,20 @@ def test_get_text_retries_429_honouring_retry_after():
     with make(handler, min_interval=0, sleep=sleeps.append, clock=lambda: 0.0) as http:
         assert http.get_text("https://example.org/x") == "ok"
     assert sleeps == [7.0]
+
+
+def test_user_agent_is_anonymous_without_contact():
+    with make(lambda r: httpx.Response(200, text="ok")) as http:
+        assert http.user_agent == "jobhunt/0.1 (personal job search)"
+
+
+def test_user_agent_includes_contact_when_given():
+    seen = {}
+
+    def handler(request):
+        seen["ua"] = request.headers["user-agent"]
+        return httpx.Response(200, text="ok")
+
+    with make(handler, contact="me@example.org") as http:
+        http.get_text("https://example.org/")
+    assert seen["ua"] == "jobhunt/0.1 (personal job search; contact: me@example.org)"
