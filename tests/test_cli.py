@@ -170,3 +170,28 @@ def test_root_option_must_point_at_a_workspace(tmp_path):
     result = runner.invoke(app, ["--root", str(tmp_path), "sources"])
     assert result.exit_code == 1
     assert NO_WORKSPACE in result.output
+
+
+def test_init_creates_a_workspace_without_needing_one(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # no workspace anywhere above
+    ws = tmp_path / "ws"
+    result = runner.invoke(app, ["init", str(ws)])
+    assert result.exit_code == 0, result.output
+    assert (ws / "config" / "sources.yaml").exists()
+    assert (ws / ".claude" / "skills" / "jobhunt" / "SKILL.md").exists()
+    assert "profile/profile.md" in result.output and "claude login" in result.output
+    # the new workspace is immediately usable
+    assert runner.invoke(app, ["--root", str(ws), "sources"]).exit_code == 0
+
+
+def test_init_writes_engine_option(tmp_path):
+    ws = tmp_path / "ws"
+    runner.invoke(app, ["init", str(ws), "--engine", "https://example.org/e"])
+    assert "git+https://example.org/e" in (ws / "pyproject.toml").read_text()
+
+
+def test_init_refuses_non_empty_dir(tmp_path):
+    (tmp_path / "x").write_text("")
+    result = runner.invoke(app, ["init", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "not empty" in result.output

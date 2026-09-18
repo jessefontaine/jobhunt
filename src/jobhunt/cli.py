@@ -12,6 +12,7 @@ from jobhunt import pipeline
 from jobhunt.config import Config, Paths, find_root, load_config
 from jobhunt.digest import RunInfo, newest_digest
 from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl, regenerate_preferences
+from jobhunt.scaffold import DEFAULT_ENGINE_URL, init_workspace
 from jobhunt.scoring import claude_runner, score_listings
 from jobhunt.sources import list_sources
 from jobhunt.store import Store
@@ -53,6 +54,34 @@ def main(
         raise typer.Exit(1)
     root = root.resolve()
     ctx.obj = Ctx(paths=Paths(root), config=load_config(root))
+
+
+NEXT_STEPS = """\
+workspace created: {dir}
+
+next steps:
+  1. edit {dir}/profile/profile.md (and profile/preferences.md -> ## Manual)
+  2. put your CV PDF in docs/ and run scripts/extract-cv.sh (or write docs/cv.md by hand)
+  3. claude login            (once; scoring uses the claude CLI on your subscription)
+  4. cd {dir} && uv run jobhunt check
+     then rate listings in the digest, or open the folder in Claude Code and type /jobhunt
+"""
+
+
+@app.command()
+def init(
+    directory: Path = typer.Argument(..., help="Workspace directory to create"),
+    engine: str = typer.Option(
+        DEFAULT_ENGINE_URL, "--engine", help="Engine git URL written into pyproject.toml"
+    ),
+) -> None:
+    """Create a new workspace (profile, config, data dirs) in DIRECTORY."""
+    try:
+        init_workspace(directory, engine)
+    except FileExistsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    typer.echo(NEXT_STEPS.format(dir=directory))
 
 
 def _source_list(ctx: Ctx, only: str | None, fixture: Path | None) -> list[tuple[str, dict]]:
