@@ -37,7 +37,7 @@ class ScoreBatch(BaseModel):
 SCORE_SCHEMA = ScoreBatch.model_json_schema()
 
 INSTRUCTIONS = """\
-You are helping a Master's student in cognitive neuroscience triage job listings.
+You are helping the person described in the profile below triage job listings.
 Score each listing below for how well it fits THIS person, using their profile, their
 CV, their stated preferences, and the examples of listings they have already rated.
 
@@ -49,8 +49,9 @@ Scoring guide (0-100):
   0-14    irrelevant
 
 Role types: phd, postdoc, ra (research assistant / technician / scientific programmer),
-industry, other. Postdocs and roles requiring a completed PhD should score low unless
-the listing is explicitly open to MSc graduates.
+industry, other. Respect the career level and constraints stated in the profile: roles
+requiring qualifications this person does not have should score low unless the listing is
+explicitly open to their level.
 
 For each listing return: id (copy exactly), score, role_type, area_tags (2-5 short
 lowercase tags), why (ONE sentence naming the specific overlap with the profile),

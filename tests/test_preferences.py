@@ -90,3 +90,16 @@ def test_regenerate_preferences_creates_sections_when_missing(env):
     assert regenerate_preferences(paths, store, runner, "m")
     text = paths.preferences.read_text()
     assert "## Manual" in text and "## Learned" in text and "- r1" in text
+
+
+def test_preferences_prompt_does_not_assert_who_the_person_is(env):
+    paths, store = env
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return json.dumps({"structured_output": {"rules": ["r"]}})
+
+    regenerate_preferences(paths, store, runner, "sonnet")
+    assert "the person described in the profile" in seen["prompt"]
+    assert "Master's student" not in seen["prompt"]

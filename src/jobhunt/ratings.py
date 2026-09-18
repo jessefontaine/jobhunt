@@ -102,7 +102,7 @@ MANUAL_HEADING = "## Manual"
 LEARNED_HEADING = "## Learned"
 
 PREFERENCES_INSTRUCTIONS = """\
-Below are job listings a Master's student in cognitive neuroscience has rated from 5 (apply)
+Below are job listings the person described in the profile has rated from 5 (apply)
 to 1 (irrelevant), with optional notes, plus the rules previously learned from earlier ratings.
 
 Write at most 12 concise bullet rules describing what this person consistently rates HIGH
