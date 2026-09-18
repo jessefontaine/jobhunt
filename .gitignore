@@ -7,7 +7,3 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
-
-# local, rebuildable state
-data/jobs.sqlite
-data/jobs.sqlite-*

@@ -1,7 +1,7 @@
 [project]
 name = "jobhunt"
 version = "0.1.0"
-description = "Personal job-hunt pipeline: fetch Dutch research/PhD listings, score them against a profile, learn from ratings."
+description = "Job-hunt pipeline: fetch Dutch research/PhD listings, score them against your profile with Claude, learn from your ratings."
 readme = "README.md"
 authors = [
     { name = "Jesse Fontaine", email = "jesse.fontaine98@gmail.com" }
@@ -22,7 +22,6 @@ jobhunt = "jobhunt.cli:app"
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
-    "pypdf>=4.0",
 ]
 
 [build-system]

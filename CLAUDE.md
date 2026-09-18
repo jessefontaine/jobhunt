@@ -1,15 +1,16 @@
-# jobhunt — notes for Claude
+# jobhunt engine — notes for Claude
 
-Personal job-hunt pipeline. Read
-[README.md](README.md) for the workflow and
-[docs/superpowers/specs/2026-09-17-jobhunt-design.md](docs/superpowers/specs/2026-09-17-jobhunt-design.md)
-for the design and the decisions behind it.
+Public engine for a personal job-hunt pipeline: scrape Dutch research/PhD listings, score them
+against a user's profile with `claude -p`, write digests, learn from ratings. Read
+[README.md](README.md) for the workflow and `docs/superpowers/specs/` for the design decisions.
 
-- `/jobhunt` runs the pipeline and records chat ratings — use it rather than scoring listings yourself.
-- Scoring and preference learning go through the shell `claude` CLI (`claude -p`); if it reports
-  `OAuth session expired`, the user has to run `claude login`.
+- This checkout is **not a workspace**: `jobhunt check` etc. need a directory containing
+  `config/sources.yaml` (make one with `uv run jobhunt init DIR`). Workspaces hold personal data
+  and are never committed here.
 - Sources are one file each in `src/jobhunt/sources/`; parsers are pure functions tested against
   saved HTML in `tests/fixtures/`. Re-save a fixture when a site changes markup.
+- Workspace templates live in `src/jobhunt/templates/` as `*.tmpl`; `jobhunt init` copies them.
 - Tests: `uv run pytest`; lint: `uv run ruff check src tests`. TDD: test first.
 - Never work around scraper blocks (403/CAPTCHA/sign-in walls) — surface a manual link instead.
-- This repo holds personal data (CV); keep it private if it is ever pushed.
+- Scoring and preference learning go through the shell `claude` CLI; if it reports
+  `OAuth session expired`, the user has to run `claude login`.
