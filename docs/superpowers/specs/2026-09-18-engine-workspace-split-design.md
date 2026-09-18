@@ -169,3 +169,11 @@ jobhunt = { path = "../code/jobhunt", editable = true }
 - `init` into a non-empty dir: exit 1 before writing anything.
 - Missing `contact`: no error; anonymous User-Agent.
 - Everything else is unchanged from the original design.
+
+## Out of scope / later
+
+- **Obsidian-native workspace**: one note per listing with frontmatter (`score`, `employer`,
+  `deadline`, `rating`, `status`) so Obsidian Bases can provide table/kanban views, plus
+  application tracking after a listing is rated "apply". This changes the digest and rating
+  loop and is a separate design once the plain workspace has been used for a while. The
+  workspace is already a plain folder, so it can be opened as a vault as-is.
