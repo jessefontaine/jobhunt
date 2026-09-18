@@ -58,6 +58,7 @@ class Config:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
     sources: dict[str, Any] = field(default_factory=dict)
+    contact: str | None = None  # goes into the scraper User-Agent
 
     def enabled_sources(self) -> list[str]:
         return [
@@ -67,13 +68,16 @@ class Config:
         ]
 
 
-def find_root(start: Path | None = None) -> Path:
-    """Walk up from `start` (default cwd) to the directory containing pyproject.toml."""
+MARKER = Path("config") / "sources.yaml"
+
+
+def find_root(start: Path | None = None) -> Path | None:
+    """Nearest directory at or above `start` (default cwd) that contains config/sources.yaml."""
     here = (start or Path.cwd()).resolve()
     for candidate in [here, *here.parents]:
-        if (candidate / "pyproject.toml").exists():
+        if (candidate / MARKER).exists():
             return candidate
-    return here
+    return None
 
 
 def load_config(root: Path) -> Config:
@@ -81,8 +85,10 @@ def load_config(root: Path) -> Config:
     if not paths.sources_yaml.exists():
         return Config()
     data = yaml.safe_load(paths.sources_yaml.read_text()) or {}
+    contact = data.get("contact")
     return Config(
         scoring=ScoringConfig(**(data.get("scoring") or {})),
         digest=DigestConfig(**(data.get("digest") or {})),
         sources=data.get("sources") or {},
+        contact=str(contact).strip() if contact else None,
     )

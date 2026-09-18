@@ -1,6 +1,6 @@
 import textwrap
 
-from jobhunt.config import Config, Paths, load_config
+from jobhunt.config import Config, Paths, find_root, load_config
 
 
 def test_paths_are_relative_to_root(tmp_path):
@@ -46,3 +46,30 @@ def test_load_config_defaults_when_file_missing(tmp_path):
 
 def test_digest_limit_config_default(tmp_path):
     assert load_config(tmp_path).digest.limit == 60
+
+
+def test_load_config_reads_optional_contact(tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "sources.yaml").write_text("contact: me@example.org\nsources: {}\n")
+    assert load_config(tmp_path).contact == "me@example.org"
+
+
+def test_load_config_contact_defaults_to_none(tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "sources.yaml").write_text("sources: {}\n")
+    assert load_config(tmp_path).contact is None
+    assert load_config(tmp_path / "nowhere").contact is None
+
+
+def test_find_root_finds_nearest_dir_with_sources_yaml(tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "sources.yaml").write_text("sources: {}\n")
+    nested = tmp_path / "digests" / "deep"
+    nested.mkdir(parents=True)
+    assert find_root(nested) == tmp_path
+    assert find_root(tmp_path) == tmp_path
+
+
+def test_find_root_returns_none_outside_a_workspace(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")  # not enough any more
+    assert find_root(tmp_path) is None
