@@ -115,8 +115,9 @@ jobhunt = { path = "../code/jobhunt", editable = true }
   engine README for sources and options.
 
 ### Engine repo housekeeping
-- Removed from the engine: `.claude/skills/jobhunt/`, `scripts/`, `profile/`, `docs/cv.md`,
-  `docs/Academic CV.pdf`, `data/`, `digests/` (all now templates or personal).
+- Removed from the engine: `.claude/skills/jobhunt/`, `scripts/`, `config/`, `profile/`,
+  `docs/cv.md`, `docs/Academic CV.pdf`, `data/`, `digests/` (all now templates or personal). With
+  `config/sources.yaml` gone, the engine checkout is not itself a workspace.
 - `README.md` rewritten: what it does; **Quickstart** (`uvx --from git+https://github.com/jessefontaine/jobhunt jobhunt init ~/jobhunt`, fill profile, `cd`, `uv run jobhunt check`); workflow and rating
   scale; sources table (unchanged); config reference (`contact`, `scoring`, `digest`, per-source
   keys); adding a source; development (`uv sync`, `uv run pytest`, `uv run ruff check`, the
