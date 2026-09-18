@@ -54,7 +54,7 @@ def _fetch(ctx: Ctx, only: str | None, fixture: Path | None) -> RunInfo:
 
     sources = _source_list(ctx, only, fixture)
     with PoliteClient() as http:
-        info = pipeline.fetch_sources(ctx.store, http, sources)
+        info = pipeline.fetch_sources(ctx.store, http, sources, progress=typer.echo)
     typer.echo(f"fetched: {info.new} new listing(s) from {len(sources)} source(s)")
     for name, err in info.errors.items():
         typer.echo(f"  ! {name}: {err}", err=True)
@@ -73,7 +73,13 @@ def fetch(
 
 def _score(ctx: Ctx, dry_run: bool = False) -> None:
     result = score_listings(
-        ctx.store, ctx.paths, ctx.config.scoring, RUNNER, date.today(), dry_run=dry_run
+        ctx.store,
+        ctx.paths,
+        ctx.config.scoring,
+        RUNNER,
+        date.today(),
+        dry_run=dry_run,
+        progress=typer.echo,
     )
     if dry_run:
         return
@@ -150,6 +156,7 @@ def rate(
             "use --force to regenerate anyway)"
         )
         return
+    typer.echo(f"regenerating preferences with {c.config.scoring.model} (one Claude call)…")
     ok = regenerate_preferences(c.paths, store, RUNNER, c.config.scoring.model)
     typer.echo("preferences: updated" if ok else "preferences: failed (file left untouched)")
 

@@ -190,3 +190,44 @@ def test_score_listings_skips_expired(env):
     called = []
     result = score_listings(store, paths, ScoringConfig(), lambda *a: called.append(a), TODAY)
     assert called == [] and result.scored == 0
+
+
+def test_score_listings_reports_progress_per_batch(env):
+    paths, store = env
+    listings = [L(n) for n in range(1, 6)]
+    store.upsert_listings(listings)
+
+    def runner(prompt, model, schema):
+        ids = [lst.id for lst in listings if lst.id in prompt]
+        payload = {
+            "scores": [
+                {
+                    "id": i,
+                    "score": 1,
+                    "role_type": "ra",
+                    "area_tags": [],
+                    "why": "w",
+                    "concerns": "",
+                }
+                for i in ids
+            ]
+        }
+        return _envelope(payload, structured=True)
+
+    messages = []
+    score_listings(
+        store, paths, ScoringConfig(batch_size=2), runner, TODAY, progress=messages.append
+    )
+    assert messages[0] == "scoring 5 listing(s) in 3 batch(es) with sonnet…"
+    assert "batch 1/3" in messages[1] and "batch 3/3" in messages[-1]
+    assert any("2 scored" in m for m in messages)
+
+
+def test_score_listings_reports_failed_batch_in_progress(env):
+    paths, store = env
+    store.upsert_listings([L(1)])
+    messages = []
+    score_listings(
+        store, paths, ScoringConfig(), lambda *a: "garbage", TODAY, progress=messages.append
+    )
+    assert any("failed" in m for m in messages)

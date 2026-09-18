@@ -149,6 +149,7 @@ def test_rate_learns_when_forced_and_keeps_manual(scored_root):
     assert result.exit_code == 0, result.output
     assert "preferences: skipped" in result.output  # < 3 new ratings
     result = run(root, "rate", "--force")
+    assert "regenerating preferences" in result.output, result.output
     assert "preferences: updated" in result.output, result.output
     prefs = (root / "profile" / "preferences.md").read_text()
     assert "- mine" in prefs and "- learned rule" in prefs

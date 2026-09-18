@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -11,26 +12,38 @@ from jobhunt.models import Listing
 from jobhunt.sources import get_source
 from jobhunt.store import Store
 
+Progress = Callable[[str], None]
 
-def fetch_sources(store: Store, http: Any, sources: list[tuple[str, dict]]) -> RunInfo:
+
+def fetch_sources(
+    store: Store,
+    http: Any,
+    sources: list[tuple[str, dict]],
+    progress: Progress = lambda msg: None,
+) -> RunInfo:
     """Run each (name, cfg) source, upsert results, fetch details for new listings.
 
-    Never raises for a source; problems end up in RunInfo.errors.
+    Never raises for a source; problems end up in RunInfo.errors. `progress` gets one line per
+    stage (fetches run at 1 request/s, so silence looks like a hang).
     """
     info = RunInfo()
     for name, cfg in sources:
+        progress(f"{name}: fetching…")
         try:
             source = get_source(name)
             result = source.fetch(cfg, http)
         except Exception as exc:  # a source bug must not kill the run
             info.errors[name] = f"{type(exc).__name__}: {exc}"
+            progress(f"{name}: failed ({info.errors[name]})")
             continue
         new = store.upsert_listings(result.listings)
         info.new += len(new)
+        progress(f"{name}: {len(new)} new of {len(result.listings)} seen")
+        fresh = [lst for lst in result.listings if lst.id in new]
+        if fresh and hasattr(source, "fetch_detail"):
+            progress(f"{name}: fetching details for {len(fresh)} new listing(s)…")
         errors = list(result.errors)
-        errors += _fetch_details(
-            store, http, source, [lst for lst in result.listings if lst.id in new]
-        )
+        errors += _fetch_details(store, http, source, fresh)
         if errors:
             info.errors[name] = "; ".join(errors)
         info.manual.update(result.manual_urls)

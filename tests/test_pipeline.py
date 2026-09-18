@@ -100,3 +100,12 @@ def test_build_digest_limit_keeps_best_scored_then_unscored(tmp_path):
     assert "J3" in md and "J2" in md and "J1" in md
     assert "J0" not in md and "J4" not in md and "J5" not in md
     assert "showing 3 of 6" in md
+
+
+def test_fetch_sources_reports_progress_per_source(registered, tmp_path):
+    store = Store(tmp_path / "db")
+    messages = []
+    pipeline.fetch_sources(store, None, [("fake", {})], progress=messages.append)
+    assert messages[0] == "fake: fetching…"
+    assert any("fake: 2 new" in m for m in messages)
+    assert any("details" in m for m in messages)

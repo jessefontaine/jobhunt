@@ -194,6 +194,9 @@ def _chunks(items: list[Listing], size: int) -> list[list[Listing]]:
     return [items[i : i + size] for i in range(0, len(items), max(size, 1))]
 
 
+Progress = Callable[[str], None]
+
+
 def score_listings(
     store: Store,
     paths: Paths,
@@ -201,8 +204,13 @@ def score_listings(
     runner: Runner,
     today: date,
     dry_run: bool = False,
+    progress: Progress = lambda msg: None,
 ) -> ScoreRunResult:
-    """Score every unscored, unexpired listing in batches. One retry per batch."""
+    """Score every unscored, unexpired listing in batches. One retry per batch.
+
+    `progress` is called with a human-readable line before/after each batch (each `claude -p`
+    call takes tens of seconds, so silence looks like a hang).
+    """
     result = ScoreRunResult()
     pending = store.unscored_listings(today)
     if not pending:
@@ -212,14 +220,19 @@ def score_listings(
     cv = paths.cv.read_text() if paths.cv.exists() else ""
     examples = store.rated_examples(cfg.examples)
 
-    for batch in _chunks(pending, cfg.batch_size):
+    batches = _chunks(pending, cfg.batch_size)
+    if not dry_run:
+        progress(f"scoring {len(pending)} listing(s) in {len(batches)} batch(es) with {cfg.model}…")
+    for n, batch in enumerate(batches, 1):
         prompt = build_prompt(profile, preferences, cv, examples, batch)
         if dry_run:
             print(prompt)
             return result
         ids = {lst.id for lst in batch}
         last_error = ""
-        for _attempt in range(2):
+        for attempt in range(2):
+            if attempt:
+                progress(f"  batch {n}/{len(batches)}: retrying ({last_error[:80]})")
             try:
                 scores = parse_response(runner(prompt, cfg.model, SCORE_SCHEMA), ids, cfg.model)
             except (ValueError, RuntimeError) as exc:
@@ -227,8 +240,10 @@ def score_listings(
                 continue
             store.save_scores(scores)
             result.scored += len(scores)
+            progress(f"  batch {n}/{len(batches)}: {len(scores)} scored")
             break
         else:
             result.failed += len(batch)
             result.errors.append(f"batch of {len(batch)}: {last_error}")
+            progress(f"  batch {n}/{len(batches)}: failed, left unscored")
     return result
