@@ -33,12 +33,25 @@ class Ctx:
         return Store(self.paths.db)
 
 
+NO_WORKSPACE = (
+    "Not inside a jobhunt workspace (no config/sources.yaml found). Run: jobhunt init DIR"
+)
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
-    root: Path | None = typer.Option(None, help="Project root (default: nearest pyproject.toml)"),
+    root: Path | None = typer.Option(
+        None, help="Workspace root (default: nearest directory containing config/sources.yaml)"
+    ),
 ) -> None:
-    root = (root or find_root()).resolve()
+    if ctx.invoked_subcommand == "init":
+        return  # init creates a workspace; it must not require one
+    root = root or find_root()
+    if root is None or not (root / "config" / "sources.yaml").exists():
+        typer.echo(NO_WORKSPACE, err=True)
+        raise typer.Exit(1)
+    root = root.resolve()
     ctx.obj = Ctx(paths=Paths(root), config=load_config(root))
 
 

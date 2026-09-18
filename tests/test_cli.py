@@ -11,7 +11,6 @@ runner = CliRunner()
 
 @pytest.fixture
 def root(tmp_path):
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "sources.yaml").write_text("sources: {}\n")
     fixture = tmp_path / "listings.json"
@@ -153,3 +152,21 @@ def test_rate_learns_when_forced_and_keeps_manual(scored_root):
     assert "preferences: updated" in result.output, result.output
     prefs = (root / "profile" / "preferences.md").read_text()
     assert "- mine" in prefs and "- learned rule" in prefs
+
+
+NO_WORKSPACE = (
+    "Not inside a jobhunt workspace (no config/sources.yaml found). Run: jobhunt init DIR"
+)
+
+
+def test_commands_fail_cleanly_outside_a_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["sources"])
+    assert result.exit_code == 1
+    assert NO_WORKSPACE in result.output
+
+
+def test_root_option_must_point_at_a_workspace(tmp_path):
+    result = runner.invoke(app, ["--root", str(tmp_path), "sources"])
+    assert result.exit_code == 1
+    assert NO_WORKSPACE in result.output
