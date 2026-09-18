@@ -1,0 +1,37 @@
+# jobhunt workspace
+
+Your private job-hunt folder: profile, CV, ratings, digests. Keep it private — it holds
+personal data. Engine and full docs: https://github.com/jessefontaine/jobhunt
+
+## Setup (once)
+
+1. Edit `profile/profile.md` (and add rules to `profile/preferences.md` → `## Manual`).
+2. Put your CV PDF in `docs/` and run `scripts/extract-cv.sh` (needs `pdftotext`), or write
+   `docs/cv.md` by hand. The scorer reads `docs/cv.md`.
+3. Edit `config/sources.yaml`: queries, and optionally `contact:`.
+4. `claude login` once — scoring runs on your Claude subscription via the `claude` CLI.
+5. `git init && git add -A && git commit -m "workspace"` (optional, recommended).
+
+## Workflow
+
+```bash
+uv run jobhunt check   # fetch → score → write digests/<today>.md
+```
+
+Open the newest digest and fill in `rating:` (1–5) and optionally `note:` under listings, then:
+
+```bash
+uv run jobhunt rate    # ingest ratings, regenerate learned preferences after ≥3 new ratings
+```
+
+| rating | meaning |
+|--------|---------|
+| 5 | apply |
+| 4 | strong interest |
+| 3 | maybe |
+| 2 | not really |
+| 1 | irrelevant |
+
+Or open this folder in Claude Code and type `/jobhunt` — it runs the same commands and records
+ratings you give in chat. Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`,
+`jobhunt sources`, `jobhunt rate --rebuild`.

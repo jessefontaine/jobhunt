@@ -1,0 +1,10 @@
+# This directory is a jobhunt *workspace*: your profile, config, ratings and digests.
+# It contains no code; the engine is installed from the URL below.
+# Developing the engine? Point at a local checkout instead:
+#   [tool.uv.sources]
+#   jobhunt = { path = "../code/jobhunt", editable = true }
+[project]
+name = "jobhunt-workspace"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["jobhunt @ git+{engine_url}"]

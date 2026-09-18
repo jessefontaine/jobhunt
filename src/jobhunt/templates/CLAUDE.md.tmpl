@@ -1,0 +1,12 @@
+# jobhunt workspace — notes for Claude
+
+This is a personal jobhunt *workspace* (profile, CV, ratings, digests). The code lives in the
+`jobhunt` package installed from `pyproject.toml`. Everything here is personal data — never
+publish it.
+
+- `/jobhunt` runs the pipeline and records chat ratings — use it rather than scoring listings
+  yourself.
+- Scoring and preference learning go through the shell `claude` CLI (`claude -p`); if it reports
+  `OAuth session expired`, the user has to run `claude login`.
+- Never work around scraper blocks (403/CAPTCHA/sign-in walls) — surface the manual link instead.
+- Engine bugs or new sources belong in the engine repo, not here.

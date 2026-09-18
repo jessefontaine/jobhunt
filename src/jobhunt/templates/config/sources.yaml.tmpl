@@ -1,6 +1,11 @@
-# Which sources `jobhunt fetch` pulls from, and how scoring runs.
-# Add a source: write src/jobhunt/sources/<name>.py, register it in sources/__init__.py,
-# then enable it here.
+# jobhunt workspace config. Edit the queries to match what you are looking for; the source
+# set is Netherlands-centric (see the engine README for what each source does).
+# Add a source: write src/jobhunt/sources/<name>.py in the engine, register it in
+# sources/__init__.py, then enable it here.
+
+# Optional: put an email here and scrapers identify themselves with it in the User-Agent
+# (polite, and lets a site contact you instead of blocking you).
+# contact: you@example.org
 
 scoring:
   model: sonnet        # passed to `claude -p --model`
@@ -83,6 +88,7 @@ sources:
 
   indeed:
     enabled: true      # manual only: Indeed blocks scrapers, so this just adds links to the digest
+    domain: nl.indeed.com
     queries: [neuroscience, "cognitive psychology research"]
     location: Nederland
 
