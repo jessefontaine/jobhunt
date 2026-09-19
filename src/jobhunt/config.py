@@ -68,14 +68,11 @@ class Config:
         ]
 
 
-MARKER = Path("config") / "sources.yaml"
-
-
 def find_root(start: Path | None = None) -> Path | None:
     """Nearest directory at or above `start` (default cwd) that contains config/sources.yaml."""
     here = (start or Path.cwd()).resolve()
     for candidate in [here, *here.parents]:
-        if (candidate / MARKER).exists():
+        if Paths(candidate).sources_yaml.exists():
             return candidate
     return None
 
