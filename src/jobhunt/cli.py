@@ -46,14 +46,16 @@ def main(
         None, help="Workspace root (default: nearest directory containing config/sources.yaml)"
     ),
 ) -> None:
-    if ctx.invoked_subcommand == "init":
-        return  # init creates a workspace; it must not require one
-    root = root or find_root()
-    if root is None or not (root / "config" / "sources.yaml").exists():
+    ctx.obj = root
+
+
+def _workspace(ctx: typer.Context) -> Ctx:
+    root = ctx.obj or find_root()
+    if root is None or not Paths(root).sources_yaml.exists():
         typer.echo(NO_WORKSPACE, err=True)
         raise typer.Exit(1)
     root = root.resolve()
-    ctx.obj = Ctx(paths=Paths(root), config=load_config(root))
+    return Ctx(paths=Paths(root), config=load_config(root))
 
 
 NEXT_STEPS = """\
@@ -110,7 +112,7 @@ def fetch(
     fixture: Path | None = typer.Option(None, help="Load listings from a JSON fixture instead"),
 ) -> None:
     """Pull new listings from enabled sources into the local store."""
-    _fetch(ctx.obj, source, fixture)
+    _fetch(_workspace(ctx), source, fixture)
 
 
 def _score(ctx: Ctx, dry_run: bool = False) -> None:
@@ -136,13 +138,13 @@ def score(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the first prompt and stop"),
 ) -> None:
     """Score unscored listings with Claude (`claude -p`)."""
-    _score(ctx.obj, dry_run=dry_run)
+    _score(_workspace(ctx), dry_run=dry_run)
 
 
 @app.command()
 def digest(ctx: typer.Context) -> None:
     """Write a ranked digest of unrated listings to digests/."""
-    c: Ctx = ctx.obj
+    c: Ctx = _workspace(ctx)
     path = pipeline.build_digest(
         c.store, c.paths.digests, date.today(), RunInfo(), limit=c.config.digest.limit
     )
@@ -157,7 +159,7 @@ def check(
     no_score: bool = typer.Option(False, "--no-score", help="Skip Claude scoring"),
 ) -> None:
     """fetch → score → digest, in one go."""
-    c: Ctx = ctx.obj
+    c: Ctx = _workspace(ctx)
     info = _fetch(c, source, fixture)
     if not no_score:
         _score(c)
@@ -176,7 +178,7 @@ def rate(
     rebuild: bool = typer.Option(False, help="Replay data/ratings.jsonl into the store first"),
 ) -> None:
     """Ingest the ratings you wrote into a digest."""
-    c: Ctx = ctx.obj
+    c: Ctx = _workspace(ctx)
     store = c.store
     if rebuild:
         n = rebuild_from_jsonl(store, c.paths.ratings)
@@ -206,6 +208,6 @@ def rate(
 @app.command()
 def sources(ctx: typer.Context) -> None:
     """List known sources and whether they are enabled."""
-    enabled = set(ctx.obj.config.enabled_sources())
+    enabled = set(_workspace(ctx).config.enabled_sources())
     for name in list_sources():
         typer.echo(f"{name:20s} {'enabled' if name in enabled else 'disabled'}")

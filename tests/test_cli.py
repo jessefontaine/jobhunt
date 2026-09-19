@@ -166,6 +166,13 @@ def test_commands_fail_cleanly_outside_a_workspace(tmp_path, monkeypatch):
     assert NO_WORKSPACE in result.output
 
 
+def test_subcommand_help_works_outside_a_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["check", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--no-score" in result.output
+
+
 def test_root_option_must_point_at_a_workspace(tmp_path):
     result = runner.invoke(app, ["--root", str(tmp_path), "sources"])
     assert result.exit_code == 1
