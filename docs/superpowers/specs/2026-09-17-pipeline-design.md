@@ -40,7 +40,7 @@ jobhunt/
   docs/
     Academic CV.pdf              # existing
     cv.md                        # plain-text extraction of the PDF (pypdf or `pdftotext`), used in prompts
-    superpowers/specs/2026-09-17-jobhunt-design.md
+    superpowers/specs/2026-09-17-pipeline-design.md
   config/sources.yaml
   data/
     jobs.sqlite                  # gitignored; rebuildable

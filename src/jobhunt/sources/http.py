@@ -1,4 +1,4 @@
-"""Shared polite HTTP client for scrapers: fixed UA, minimum interval between requests."""
+"""Shared polite HTTP client for scrapers: configurable UA, minimum interval between requests."""
 
 from __future__ import annotations
 

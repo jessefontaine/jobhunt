@@ -129,6 +129,8 @@ jobhunt = { path = "../code/jobhunt", editable = true }
   `pypdf` dropped from the dev group (unused).
 - The 2026-09-17 design spec is dropped from history and re-added with the CV-derived details
   (background, GPA, supervisors, "Verified facts" paragraph) removed; the design sections stay.
+- `docs/superpowers/plans/` is not shipped in the public engine (scrubbed from history in the
+  migration); specs are.
 
 ## Author migration (one-off, run in this order)
 
@@ -137,13 +139,18 @@ jobhunt = { path = "../code/jobhunt", editable = true }
 2. `uv run jobhunt init ~/Documents/jobhunt-jesse`, then copy in the real `profile/profile.md`
    (adding a `## Level` section: MSc student; postdoc/PhD-required roles only if explicitly open to
    MSc graduates), `profile/preferences.md`, `docs/Academic CV.pdf`, `docs/cv.md`,
-   `digests/2026-09-18.md`, `data/ratings.jsonl`, `data/jobs.sqlite`. Add `contact:` to
-   `config/sources.yaml`. Switch `pyproject.toml` to the editable local source. `git init`, commit.
-   Verify: `uv run jobhunt digest` reproduces the digest from the copied database.
+   `digests/2026-09-18.md`, `data/ratings.jsonl`, `data/jobs.sqlite`. Also copy
+   `docs/superpowers/plans/` into the workspace's `docs/` (the plans leave the public engine). Add
+   `contact:` to `config/sources.yaml`. Switch `pyproject.toml` to the editable local source.
+   `git init`, commit. Verify: `uv run jobhunt digest` reproduces the digest from the copied
+   database.
 3. `mv ~/Documents/jobhunt ~/Documents/code/jobhunt`.
 4. In the engine: `uvx git-filter-repo --invert-paths` for `docs/Academic CV.pdf`, `docs/cv.md`,
    `profile/`, `digests/2026-09-18.md`, `data/ratings.jsonl`,
-   `docs/superpowers/specs/2026-09-17-jobhunt-design.md`. Commit the redacted spec.
+   `docs/superpowers/specs/2026-09-17-jobhunt-design.md`, and `docs/superpowers/plans/` (process
+   artefacts with the author's data; copied to the workspace in step 2 for the record), plus
+   `--replace-text` with a file (kept outside the repo) mapping the author's phone number and the
+   supervisor surname used in an old test note to `***`. Commit the redacted spec.
 5. Verify: `git log --all --stat` contains none of those paths; `git grep` over all commits for
    the phone number and for `Academic CV` finds nothing; `uv run pytest` and `ruff` pass.
 6. User runs `gh auth login`; then, after explicit confirmation, `gh repo create

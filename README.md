@@ -47,7 +47,7 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 | `jobhunt fetch [--source X]` | only fetch new listings into `data/jobs.sqlite` |
 | `jobhunt score [--dry-run]` | score unscored listings (`--dry-run` prints the first prompt) |
 | `jobhunt digest` | re-render a digest from the store |
-| `jobhunt rate [FILE] [--force] [--rebuild]` | ingest ratings from the newest (or given) digest |
+| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |
 
 All commands except `init` must run inside a workspace (a directory containing
@@ -78,7 +78,7 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `data/ratings.jsonl` | append-only rating log — the durable record |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |
-| `pyproject.toml` | depends on this engine; `uv run jobhunt …` works from here |
+| `pyproject.toml` | depends on this engine; `uv run jobhunt …` works from here; `uv sync --upgrade-package jobhunt` pulls a newer engine |
 
 ## Adding a source
 

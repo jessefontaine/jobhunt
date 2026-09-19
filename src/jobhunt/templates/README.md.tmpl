@@ -32,6 +32,8 @@ uv run jobhunt rate    # ingest ratings, regenerate learned preferences after â‰
 | 2 | not really |
 | 1 | irrelevant |
 
+Engine updates: `uv sync --upgrade-package jobhunt` (the first run pins a commit in `uv.lock`).
+
 Or open this folder in Claude Code and type `/jobhunt` â€” it runs the same commands and records
 ratings you give in chat. Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`,
 `jobhunt sources`, `jobhunt rate --rebuild`.
