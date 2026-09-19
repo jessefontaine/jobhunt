@@ -232,6 +232,7 @@ def test_score_listings_reports_failed_batch_in_progress(env):
     )
     assert any("failed" in m for m in messages)
 
+
 def test_prompt_describes_the_person_only_via_the_profile():
     prompt = build_prompt("PROFILE", "PREFS", "CV", [], [L(1)])
     assert "the person described in the profile below" in prompt

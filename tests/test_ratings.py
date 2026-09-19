@@ -21,7 +21,7 @@ New: 3 · Unscored: 0
 score 80 · PhD · [s](https://x.org/j/1)
 **Why:** yes
 rating: 4
-note: looks great, ***-adjacent
+note: looks great, close to my lab
 
 ## 2. Job 2 — Uni
 <!-- id: bbbbbbbbbbbb -->
@@ -41,7 +41,7 @@ note: typo
 
 def test_parse_digest_extracts_filled_ratings_and_reports_invalid():
     parsed, errors = parse_digest(DIGEST)
-    assert parsed == [("aaaaaaaaaaaa", 4, "looks great, ***-adjacent")]
+    assert parsed == [("aaaaaaaaaaaa", 4, "looks great, close to my lab")]
     assert len(errors) == 1
     assert "line 22" in errors[0] and "seven" in errors[0]
 
