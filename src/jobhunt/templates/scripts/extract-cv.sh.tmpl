@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
-# Regenerate docs/cv.md from docs/Academic CV.pdf (needs poppler's pdftotext).
+# Regenerate docs/cv.md from a CV PDF (needs poppler's pdftotext).
+# Usage: scripts/extract-cv.sh [docs/your-cv.pdf]   (default: the only PDF in docs/)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [ $# -ge 1 ]; then
+  pdf="$1"
+else
+  shopt -s nullglob
+  pdfs=(docs/*.pdf)
+  if [ "${#pdfs[@]}" -ne 1 ]; then
+    echo "usage: $0 docs/your-cv.pdf   (found ${#pdfs[@]} PDFs in docs/)" >&2
+    exit 1
+  fi
+  pdf="${pdfs[0]}"
+fi
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
 {
-  echo "# Academic CV"
+  echo "# CV"
   echo
-  echo "_Text extraction of \`docs/Academic CV.pdf\`. Regenerate with \`scripts/extract-cv.sh\` after updating the PDF._"
+  echo "_Text extraction of \`$pdf\`. Regenerate with \`scripts/extract-cv.sh\` after updating the PDF._"
   echo
-  pdftotext -layout "docs/Academic CV.pdf" - \
+  pdftotext -layout "$pdf" - \
     | sed 's/\xe2\x80\x8b//g; s/[ \t]*$//; s/●/-/' \
     | sed '/^$/N;/^\n$/D'
-} > docs/cv.md
-echo "wrote docs/cv.md"
+} > "$tmp"
+mv "$tmp" docs/cv.md
+echo "wrote docs/cv.md from $pdf"

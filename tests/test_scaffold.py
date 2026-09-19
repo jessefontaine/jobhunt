@@ -61,3 +61,8 @@ def test_no_template_has_placeholders_except_pyproject():
     for rel, res in template_files().items():
         if rel != "pyproject.toml" and not rel.endswith(".gitkeep"):
             assert "{engine_url}" not in res.read_text(), rel
+
+
+def test_extract_cv_script_takes_the_pdf_path_as_an_argument():
+    # guards against reverting to a hardcoded PDF name
+    assert "$1" in template_files()["scripts/extract-cv.sh"].read_text()
