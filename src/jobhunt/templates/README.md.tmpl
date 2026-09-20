@@ -36,4 +36,5 @@ Engine updates: `uv sync --upgrade-package jobhunt` (the first run pins a commit
 
 Or open this folder in Claude Code and type `/jobhunt` — it runs the same commands and records
 ratings you give in chat. Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`,
-`jobhunt sources`, `jobhunt rate --rebuild`.
+`jobhunt sources`, `jobhunt rate --rebuild`. After editing `profile/`, `uv run jobhunt check --rescore`
+re-scores every listing that is still open (one Claude call per batch).

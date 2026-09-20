@@ -46,6 +46,22 @@ def test_unscored_excludes_scored_and_expired(store):
     assert ids == {listing(1).id}
 
 
+def test_unexpired_includes_scored_and_rated_but_not_expired(store):
+    today = date(2026, 9, 17)
+    store.upsert_listings(
+        [
+            listing(1, deadline=date(2026, 10, 1)),
+            listing(2, deadline=date(2026, 9, 1)),  # expired
+            listing(3),  # scored, no deadline
+            listing(4),  # rated
+        ]
+    )
+    store.save_scores([Score(listing_id=listing(3).id, score=50)])
+    store.save_rating(Rating(listing_id=listing(4).id, rating=5))
+    ids = {lst.id for lst in store.unexpired_listings(today)}
+    assert ids == {listing(1).id, listing(3).id, listing(4).id}
+
+
 def test_scores_roundtrip(store):
     store.upsert_listings([listing(1)])
     sc = Score(

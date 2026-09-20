@@ -24,6 +24,8 @@ Open the digest, fill in `rating:` (1–5) and optionally `note:` under listings
 `uv run jobhunt rate`. Repeat. Rated listings never reappear; unrated ones do until you rate them.
 After ≥3 new ratings, `rate` regenerates the `## Learned` rules in `profile/preferences.md`
 (`--force` to do it sooner); the next `score` run reads them plus your rated listings as examples.
+That only affects listings scored from then on — after editing your profile or preferences, run
+`uv run jobhunt check --rescore` (or `score --rescore`) to re-score everything still open.
 
 | rating | meaning |
 |--------|---------|
@@ -43,9 +45,9 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 | command | does |
 |---|---|
 | `jobhunt init DIR [--engine URL]` | create a workspace |
-| `jobhunt check [--source X] [--no-score]` | fetch → score → digest |
+| `jobhunt check [--source X] [--no-score] [--rescore]` | fetch → score → digest |
 | `jobhunt fetch [--source X]` | only fetch new listings into `data/jobs.sqlite` |
-| `jobhunt score [--dry-run]` | score unscored listings (`--dry-run` prints the first prompt) |
+| `jobhunt score [--dry-run] [--rescore]` | score unscored listings (`--rescore`: every unexpired listing, replacing old scores; `--dry-run` prints the first prompt) |
 | `jobhunt digest` | re-render a digest from the store |
 | `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |

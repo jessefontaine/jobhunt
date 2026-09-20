@@ -233,6 +233,87 @@ def test_score_listings_reports_failed_batch_in_progress(env):
     assert any("failed" in m for m in messages)
 
 
+def _scoring_runner(listings, score):
+    """Runner that scores every listing it recognises in the prompt with `score`."""
+
+    def runner(prompt, model, schema):
+        ids = [lst.id for lst in listings if lst.id in prompt]
+        payload = {
+            "scores": [
+                {
+                    "id": i,
+                    "score": score,
+                    "role_type": "ra",
+                    "area_tags": [],
+                    "why": "w",
+                    "concerns": "",
+                }
+                for i in ids
+            ]
+        }
+        return _envelope(payload, structured=True)
+
+    return runner
+
+
+def test_rescore_overwrites_existing_scores(env):
+    paths, store = env
+    listings = [L(1), L(2)]
+    store.upsert_listings(listings)
+    store.save_scores([Score(listing_id=L(1).id, score=10)])
+    cfg = ScoringConfig(batch_size=10)
+
+    result = score_listings(store, paths, cfg, _scoring_runner(listings, 70), TODAY, rescore=True)
+    assert result.scored == 2
+    assert store.get_score(L(1).id).score == 70
+    assert store.get_score(L(2).id).score == 70
+
+
+def test_rescore_failed_batch_keeps_old_score(env):
+    paths, store = env
+    store.upsert_listings([L(1)])
+    store.save_scores([Score(listing_id=L(1).id, score=10)])
+    messages = []
+
+    result = score_listings(
+        store,
+        paths,
+        ScoringConfig(),
+        lambda *a: "garbage",
+        TODAY,
+        rescore=True,
+        progress=messages.append,
+    )
+    assert result.failed == 1
+    assert store.get_score(L(1).id).score == 10
+    assert any("scores left unchanged" in m for m in messages)
+    assert not any("left unscored" in m for m in messages)
+
+
+def test_rescore_does_not_show_a_listing_its_own_rating(env):
+    paths, store = env
+    rated, other = L(1, title="Rated job"), L(2, title="Other job")
+    store.upsert_listings([rated, other])
+    store.save_rating(Rating(listing_id=rated.id, rating=5, note="loved it"))
+    store.save_rating(Rating(listing_id=other.id, rating=1, note="nope"))
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([rated, other], 50)(prompt, model, schema)
+
+    score_listings(store, paths, ScoringConfig(batch_size=1), runner, TODAY, rescore=True)
+    assert len(prompts) == 2
+    for prompt in prompts:
+        examples, _, batch = prompt.partition("# Listings to score")
+        if rated.id in batch:
+            assert "[5/5] Rated job" not in examples
+            assert "[1/5] Other job" in examples
+        else:
+            assert "[1/5] Other job" not in examples
+            assert "[5/5] Rated job" in examples
+
+
 def test_prompt_describes_the_person_only_via_the_profile():
     prompt = build_prompt("PROFILE", "PREFS", "CV", [], [L(1)])
     assert "the person described in the profile below" in prompt

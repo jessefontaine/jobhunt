@@ -205,31 +205,38 @@ def score_listings(
     runner: Runner,
     today: date,
     dry_run: bool = False,
+    rescore: bool = False,
     progress: Progress = lambda msg: None,
 ) -> ScoreRunResult:
     """Score every unscored, unexpired listing in batches. One retry per batch.
 
-    `progress` is called with a human-readable line before/after each batch (each `claude -p`
-    call takes tens of seconds, so silence looks like a hang).
+    With `rescore`, every unexpired listing is scored again and existing scores are replaced;
+    a batch that fails keeps its old scores. `progress` is called with a human-readable line
+    before/after each batch (each `claude -p` call takes tens of seconds, so silence looks like
+    a hang).
     """
     result = ScoreRunResult()
-    pending = store.unscored_listings(today)
+    pending = store.unexpired_listings(today) if rescore else store.unscored_listings(today)
     if not pending:
         return result
     profile = paths.profile.read_text() if paths.profile.exists() else ""
     preferences = paths.preferences.read_text() if paths.preferences.exists() else ""
     cv = paths.cv.read_text() if paths.cv.exists() else ""
-    examples = store.rated_examples(cfg.examples)
+    # Over-fetch so a batch can drop examples for listings it contains (a rescored listing must
+    # not see its own rating) and still have `cfg.examples` left.
+    examples = store.rated_examples(cfg.examples + cfg.batch_size)
 
     batches = _chunks(pending, cfg.batch_size)
+    verb = "rescoring" if rescore else "scoring"
     if not dry_run:
-        progress(f"scoring {len(pending)} listing(s) in {len(batches)} batch(es) with {cfg.model}…")
+        progress(f"{verb} {len(pending)} listing(s) in {len(batches)} batch(es) with {cfg.model}…")
     for n, batch in enumerate(batches, 1):
-        prompt = build_prompt(profile, preferences, cv, examples, batch)
+        ids = {lst.id for lst in batch}
+        shown = [ex for ex in examples if ex[0].id not in ids][: cfg.examples]
+        prompt = build_prompt(profile, preferences, cv, shown, batch)
         if dry_run:
             print(prompt)
             return result
-        ids = {lst.id for lst in batch}
         last_error = ""
         for attempt in range(2):
             if attempt:
@@ -246,5 +253,6 @@ def score_listings(
         else:
             result.failed += len(batch)
             result.errors.append(f"batch of {len(batch)}: {last_error}")
-            progress(f"  batch {n}/{len(batches)}: failed, left unscored")
+            outcome = "scores left unchanged" if rescore else "left unscored"
+            progress(f"  batch {n}/{len(batches)}: failed, {outcome}")
     return result

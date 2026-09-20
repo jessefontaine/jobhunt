@@ -115,7 +115,13 @@ def fetch(
     _fetch(_workspace(ctx), source, fixture)
 
 
-def _score(ctx: Ctx, dry_run: bool = False) -> None:
+RESCORE_HELP = (
+    "Score every unexpired listing again, replacing existing scores "
+    "(e.g. after editing profile/ or preferences; one Claude call per batch)"
+)
+
+
+def _score(ctx: Ctx, dry_run: bool = False, rescore: bool = False) -> None:
     result = score_listings(
         ctx.store,
         ctx.paths,
@@ -123,6 +129,7 @@ def _score(ctx: Ctx, dry_run: bool = False) -> None:
         RUNNER,
         date.today(),
         dry_run=dry_run,
+        rescore=rescore,
         progress=typer.echo,
     )
     if dry_run:
@@ -136,9 +143,10 @@ def _score(ctx: Ctx, dry_run: bool = False) -> None:
 def score(
     ctx: typer.Context,
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the first prompt and stop"),
+    rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
 ) -> None:
     """Score unscored listings with Claude (`claude -p`)."""
-    _score(_workspace(ctx), dry_run=dry_run)
+    _score(_workspace(ctx), dry_run=dry_run, rescore=rescore)
 
 
 @app.command()
@@ -157,12 +165,13 @@ def check(
     source: str | None = typer.Option(None, help="Only this source"),
     fixture: Path | None = typer.Option(None, help="Load listings from a JSON fixture instead"),
     no_score: bool = typer.Option(False, "--no-score", help="Skip Claude scoring"),
+    rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
 ) -> None:
     """fetch → score → digest, in one go."""
     c: Ctx = _workspace(ctx)
     info = _fetch(c, source, fixture)
     if not no_score:
-        _score(c)
+        _score(c, rescore=rescore)
     path = pipeline.build_digest(
         c.store, c.paths.digests, date.today(), info, limit=c.config.digest.limit
     )

@@ -139,6 +139,18 @@ class Store:
         ).fetchall()
         return [self._row_to_listing(r) for r in rows]
 
+    def unexpired_listings(self, today: date) -> list[Listing]:
+        """Every listing whose deadline has not passed, scored or rated or not (for --rescore)."""
+        rows = self.conn.execute(
+            """
+            SELECT * FROM listings
+            WHERE deadline IS NULL OR deadline >= ?
+            ORDER BY fetched_at DESC
+            """,
+            (today.isoformat(),),
+        ).fetchall()
+        return [self._row_to_listing(r) for r in rows]
+
     @staticmethod
     def _row_to_listing(row: sqlite3.Row) -> Listing:
         return Listing(

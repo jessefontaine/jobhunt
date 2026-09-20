@@ -139,6 +139,23 @@ def test_score_dry_run_prints_prompt_without_scoring(scored_root):
     assert "scored: 2" in result.output
 
 
+def test_score_rescore_replaces_existing_scores(scored_root, monkeypatch):
+    import jobhunt.cli as cli
+
+    root = scored_root
+    run(root, "check", "--fixture", str(root / "listings.json"))
+    assert "scored: 2" in run(root, "score", "--rescore").output  # plain score would find 0
+
+    def flat_runner(prompt, model, schema):
+        return _fake_runner(prompt, model, schema).replace('"score": 90', '"score": 42')
+
+    monkeypatch.setattr(cli, "RUNNER", flat_runner)
+    result = run(root, "check", "--fixture", str(root / "listings.json"), "--rescore")
+    assert result.exit_code == 0, result.output
+    assert "scored: 2" in result.output
+    assert "score 42" in newest_digest(root / "digests").read_text()
+
+
 def test_rate_learns_when_forced_and_keeps_manual(scored_root):
     root = scored_root
     run(root, "check", "--fixture", str(root / "listings.json"))
