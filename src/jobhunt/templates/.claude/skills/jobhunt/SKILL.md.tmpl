@@ -14,16 +14,20 @@ yourself — `jobhunt score` does that, so results stay reproducible and the rat
 |------|---------|
 | Full run: fetch → score → digest | `uv run jobhunt check` (takes minutes: polite 1 req/s scraping) |
 | Only re-render the digest | `uv run jobhunt digest` |
+| Show what the user rated 4–5 that is still open | `uv run jobhunt shortlist` (also rewrites `shortlist.md`) |
+| Change an earlier rating | edit the `rating:` line in the digest it was rated in, then `uv run jobhunt rate digests/<that-file>.md` |
 | Re-score everything after the user edited `profile/profile.md` or `profile/preferences.md` | `uv run jobhunt check --rescore` (replaces old scores; one Claude call per batch of 10, so mention it takes a while) |
 | Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |
 | Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` alphabetically — don't trust `ls | tail`) |
 
 ## Presenting a digest
 
-Read the newest digest and show the top N (default 10) as a numbered list, one line each:
+Read the newest digest. If it has a `## Shortlist` section (listings the user already rated
+4–5 that are still open, nearest deadline first), show it first, briefly. Then show the top N
+(default 10) of the numbered queue as a list, one line each:
 `N. Title — Employer · score S · role · deadline D · [link]`, then the digest's **Why** line.
 Mention the header's `Source errors` / `Manual:` links if present. Skip `## Unscored` entries
-unless asked.
+unless asked. Shortlist lines have no `rating:` field — they are not for rating again.
 
 ## Recording ratings the user gives in chat
 

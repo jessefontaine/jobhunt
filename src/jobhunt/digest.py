@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from jobhunt.models import Listing, Score
+from jobhunt.models import Listing, Rating, Score
 
 ROLE_LABELS = {
     "phd": "PhD",
@@ -55,11 +55,27 @@ def _entry(heading: str, lst: Listing, score: Score | None) -> str:
     return "\n".join(lines)
 
 
+def render_shortlist(items: list[tuple[Listing, Rating]]) -> str:
+    """One compact line per shortlisted listing. No `<!-- id -->` on purpose: `jobhunt rate`
+    only reads entries that have one, so these can live in a digest without being re-rated."""
+    lines = []
+    for lst, rating in items:
+        parts = [f"- **{lst.title}** — {lst.employer}", f"{rating.rating}/5"]
+        if lst.deadline:
+            parts.append(f"deadline {lst.deadline.isoformat()}")
+        parts.append(f"[{lst.source}]({lst.url})")
+        if rating.note:
+            parts.append(f"note: {rating.note}")
+        lines.append(" · ".join(parts))
+    return "\n".join(lines)
+
+
 def render_digest(
     today: date,
     listings: list[Listing],
     scores: dict[str, Score],
     info: RunInfo,
+    shortlist: list[tuple[Listing, Rating]] = (),
 ) -> str:
     scored = [lst for lst in listings if lst.id in scores]
     unscored = [lst for lst in listings if lst.id not in scores]
@@ -76,6 +92,8 @@ def render_digest(
         header.append(f"Manual: {links}")
 
     out = [f"# Job digest — {today.isoformat()}", " · ".join(header), ""]
+    if shortlist:
+        out += ["## Shortlist", render_shortlist(shortlist), ""]
     for i, lst in enumerate(scored, 1):
         out.append(_entry(f"{i}. {lst.title} — {lst.employer}", lst, scores[lst.id]))
     if unscored:

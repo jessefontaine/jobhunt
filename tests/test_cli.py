@@ -76,8 +76,48 @@ def test_rate_ingests_and_excludes_rated_from_next_digest(root):
 
     run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
     latest = newest_digest(root / "digests").read_text()
-    assert "PhD vision" not in latest
+    assert "## 1. PhD vision" not in latest and "## PhD vision" not in latest
     assert "RA fMRI" in latest
+    # …but a 5 stays visible at the top, in the shortlist
+    assert latest.index("## Shortlist") < latest.index("- **PhD vision** — Donders · 5/5")
+    assert latest.index("- **PhD vision**") < latest.index("RA fMRI")
+
+
+def _rate(root, title, rating, note=""):
+    digest = newest_digest(root / "digests")
+    head, sep, tail = digest.read_text().partition(title)
+    tail = tail.replace("rating:\nnote:", f"rating: {rating}\nnote: {note}", 1)
+    digest.write_text(head + sep + tail)
+    return run(root, "rate", "--no-learn")
+
+
+def test_shortlist_prints_and_writes_file(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    result = run(root, "shortlist")
+    assert result.exit_code == 0, result.output
+    assert "(none yet)" in result.output
+
+    _rate(root, "PhD vision", 5, "yes")
+    _rate(root, "RA fMRI", 3)
+    result = run(root, "shortlist")
+    assert result.exit_code == 0, result.output
+    expected = (
+        "- **PhD vision** — Donders · 5/5 · deadline 2099-01-01"
+        " · [fixture](https://x.org/1) · note: yes"
+    )
+    assert expected in result.output
+    assert "RA fMRI" not in result.output
+    body = (root / "shortlist.md").read_text()
+    assert body.startswith("# Shortlist — ")
+    assert expected in body
+    assert f"shortlist: {root / 'shortlist.md'}" in result.output
+
+
+def test_rate_and_check_refresh_shortlist_file(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    assert "(none yet)" in (root / "shortlist.md").read_text()
+    _rate(root, "PhD vision", 4)
+    assert "- **PhD vision** — Donders · 4/5" in (root / "shortlist.md").read_text()
 
 
 def test_sources_lists_registry(root):

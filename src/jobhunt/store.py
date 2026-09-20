@@ -297,6 +297,22 @@ class Store:
         ).fetchall()
         return [self._row_to_listing(r) for r in rows]
 
+    def shortlist(self, today: date, min_rating: int = 4) -> list[tuple[Listing, Rating]]:
+        """Unexpired listings rated `min_rating` or higher: best rating first, then nearest
+        deadline (no deadline last)."""
+        rows = self.conn.execute(
+            """
+            SELECT l.*, r.rating AS r_rating, r.note AS r_note, r.digest AS r_digest,
+                   r.rated_at AS r_rated_at
+            FROM ratings r JOIN listings l ON l.id = r.listing_id
+            WHERE r.rating >= ?
+              AND (l.deadline IS NULL OR l.deadline >= ?)
+            ORDER BY r.rating DESC, l.deadline IS NULL, l.deadline, l.title
+            """,
+            (min_rating, today.isoformat()),
+        ).fetchall()
+        return [(self._row_to_listing(row), self._row_to_joined_rating(row)) for row in rows]
+
     def all_ratings(self) -> list[tuple[Listing, Rating]]:
         """Every rated listing, most recent rating first."""
         rows = self.conn.execute(

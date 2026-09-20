@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from jobhunt.digest import RunInfo, digest_path, render_digest
+from jobhunt.digest import RunInfo, digest_path, render_digest, render_shortlist
 from jobhunt.models import Listing
 from jobhunt.sources import get_source
 from jobhunt.store import Store
@@ -79,5 +79,13 @@ def build_digest(
         info.total = len(listings)
         listings = (scored + unscored)[:limit]
     path = digest_path(digests_dir, today)
-    path.write_text(render_digest(today, listings, scores, info))
+    path.write_text(render_digest(today, listings, scores, info, shortlist=store.shortlist(today)))
     return path
+
+
+def write_shortlist(store: Store, path: Path, today: date) -> str:
+    """Overwrite `path` with the current shortlist (rated >= 4, unexpired); return the text."""
+    body = render_shortlist(store.shortlist(today)) or "(none yet)"
+    text = f"# Shortlist — {today.isoformat()}\n\n{body}\n"
+    path.write_text(text)
+    return text

@@ -90,6 +90,30 @@ def test_ratings_latest_wins(store):
     assert store.rated_ids() == {listing(1).id}
 
 
+def test_shortlist_is_strong_unexpired_ratings_by_rating_then_deadline(store):
+    today = date(2026, 9, 17)
+    store.upsert_listings(
+        [
+            listing(1, deadline=date(2026, 12, 1)),  # 5, later deadline
+            listing(2, deadline=date(2026, 10, 1)),  # 5, sooner deadline
+            listing(3),  # 5, no deadline -> last among the 5s
+            listing(4, deadline=date(2026, 10, 1)),  # 4
+            listing(5),  # 3 -> excluded
+            listing(6, deadline=date(2026, 9, 1)),  # 5 but expired -> excluded
+            listing(7),  # unrated -> excluded
+        ]
+    )
+    for n, rating in [(1, 5), (2, 5), (3, 5), (4, 4), (5, 3), (6, 5)]:
+        store.save_rating(Rating(listing_id=listing(n).id, rating=rating))
+    got = store.shortlist(today)
+    assert [(lst.title, r.rating) for lst, r in got] == [
+        ("Job 2", 5),
+        ("Job 1", 5),
+        ("Job 3", 5),
+        ("Job 4", 4),
+    ]
+
+
 def test_rated_examples_returns_strong_ratings_most_recent_first(store):
     store.upsert_listings([listing(n) for n in range(1, 5)])
     store.save_rating(Rating(listing_id=listing(1).id, rating=5))

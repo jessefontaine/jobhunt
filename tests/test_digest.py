@@ -1,7 +1,8 @@
 from datetime import date
 
-from jobhunt.digest import RunInfo, render_digest
-from jobhunt.models import Listing, Score
+from jobhunt.digest import RunInfo, render_digest, render_shortlist
+from jobhunt.models import Listing, Rating, Score
+from jobhunt.ratings import parse_digest
 
 
 def L(n, **kw):
@@ -78,6 +79,37 @@ def test_unscored_entries_have_id_and_rating_lines():
     assert f"<!-- id: {lst.id} -->" in block
     assert "rating:\nnote:\n" in block
     assert "deadline 2026-12-01" in block
+
+
+def test_render_shortlist_line_format_exact():
+    lst = L(1, title="PhD: Visual cortex", employer="Donders", deadline=date(2026, 10, 15))
+    items = [
+        (lst, Rating(listing_id=lst.id, rating=5, note="ask about start date")),
+        (L(2), Rating(listing_id=L(2).id, rating=4)),
+    ]
+    assert render_shortlist(items) == (
+        "- **PhD: Visual cortex** — Donders · 5/5 · deadline 2026-10-15"
+        " · [academictransfer](https://x.org/j/1) · note: ask about start date\n"
+        "- **Job 2** — Uni 2 · 4/5 · [academictransfer](https://x.org/j/2)"
+    )
+
+
+def test_render_digest_puts_shortlist_after_header_and_hides_it_from_rate():
+    l1, l2 = L(1), L(2)
+    scores = {l1.id: Score(listing_id=l1.id, score=40, role_type="ra", why="ok")}
+    shortlist = [(l2, Rating(listing_id=l2.id, rating=5, note="yes"))]
+    md = render_digest(date(2026, 9, 17), [l1], scores, RunInfo(), shortlist=shortlist)
+    assert md.index("New: 0") < md.index("## Shortlist") < md.index("## 1. Job 1")
+    assert "- **Job 2** — Uni 2 · 5/5" in md
+    parsed, errors = parse_digest(md.replace("rating:", "rating: 3"))
+    assert errors == []
+    assert [pid for pid, _, _ in parsed] == [l1.id]
+
+
+def test_render_digest_omits_shortlist_when_empty():
+    md = render_digest(date(2026, 9, 17), [L(1)], {}, RunInfo(), shortlist=[])
+    assert "Shortlist" not in md
+    assert "Shortlist" not in render_digest(date(2026, 9, 17), [L(1)], {}, RunInfo())
 
 
 def test_digest_path_suffixes_when_file_exists(tmp_path):

@@ -24,6 +24,11 @@ Open the newest digest and fill in `rating:` (1–5) and optionally `note:` unde
 uv run jobhunt rate    # ingest ratings, regenerate learned preferences after ≥3 new ratings
 ```
 
+Rated listings leave the queue. The ones you rated 4–5 that are still open show up in a
+`## Shortlist` at the top of each digest and in `shortlist.md` (`uv run jobhunt shortlist`
+prints it). To change a rating, edit it in the digest you rated it in and run
+`uv run jobhunt rate digests/<that-file>.md`.
+
 | rating | meaning |
 |--------|---------|
 | 5 | apply |
@@ -36,5 +41,5 @@ Engine updates: `uv sync --upgrade-package jobhunt` (the first run pins a commit
 
 Or open this folder in Claude Code and type `/jobhunt` — it runs the same commands and records
 ratings you give in chat. Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`,
-`jobhunt sources`, `jobhunt rate --rebuild`. After editing `profile/`, `uv run jobhunt check --rescore`
+`jobhunt shortlist`, `jobhunt sources`, `jobhunt rate --rebuild`. After editing `profile/`, `uv run jobhunt check --rescore`
 re-scores every listing that is still open (one Claude call per batch).

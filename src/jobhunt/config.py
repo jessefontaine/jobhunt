@@ -27,6 +27,10 @@ class Paths:
         return self.root / "digests"
 
     @property
+    def shortlist(self) -> Path:
+        return self.root / "shortlist.md"
+
+    @property
     def profile(self) -> Path:
         return self.root / "profile" / "profile.md"
 

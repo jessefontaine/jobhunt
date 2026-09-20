@@ -21,7 +21,10 @@ uv run jobhunt check         # fetch → score → digests/<today>.md
 ```
 
 Open the digest, fill in `rating:` (1–5) and optionally `note:` under listings, then
-`uv run jobhunt rate`. Repeat. Rated listings never reappear; unrated ones do until you rate them.
+`uv run jobhunt rate`. Repeat. Rated listings leave the queue; unrated ones stay until you rate them.
+Listings you rated 4–5 that are still open appear in a `## Shortlist` at the top of every digest
+and in `shortlist.md` (`uv run jobhunt shortlist` prints it). To change a rating, edit the
+`rating:` line in the digest you rated it in and run `uv run jobhunt rate digests/<that-file>.md`.
 After ≥3 new ratings, `rate` regenerates the `## Learned` rules in `profile/preferences.md`
 (`--force` to do it sooner); the next `score` run reads them plus your rated listings as examples.
 That only affects listings scored from then on — after editing your profile or preferences, run
@@ -49,6 +52,7 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 | `jobhunt fetch [--source X]` | only fetch new listings into `data/jobs.sqlite` |
 | `jobhunt score [--dry-run] [--rescore]` | score unscored listings (`--rescore`: every unexpired listing, replacing old scores; `--dry-run` prints the first prompt) |
 | `jobhunt digest` | re-render a digest from the store |
+| `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
 | `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |
 
@@ -80,6 +84,7 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `data/ratings.jsonl` | append-only rating log — the durable record |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |
+| `shortlist.md` | open listings you rated 4–5, refreshed by `check`, `digest`, `rate` and `shortlist` |
 | `pyproject.toml` | depends on this engine; `uv run jobhunt …` works from here; `uv sync --upgrade-package jobhunt` pulls a newer engine |
 
 ## Adding a source

@@ -149,14 +149,26 @@ def score(
     _score(_workspace(ctx), dry_run=dry_run, rescore=rescore)
 
 
+def _digest(c: Ctx, info: RunInfo) -> None:
+    path = pipeline.build_digest(
+        c.store, c.paths.digests, date.today(), info, limit=c.config.digest.limit
+    )
+    pipeline.write_shortlist(c.store, c.paths.shortlist, date.today())
+    typer.echo(f"digest: {path}")
+
+
 @app.command()
 def digest(ctx: typer.Context) -> None:
     """Write a ranked digest of unrated listings to digests/."""
+    _digest(_workspace(ctx), RunInfo())
+
+
+@app.command()
+def shortlist(ctx: typer.Context) -> None:
+    """Print the listings you rated 4-5 that are still open, and write shortlist.md."""
     c: Ctx = _workspace(ctx)
-    path = pipeline.build_digest(
-        c.store, c.paths.digests, date.today(), RunInfo(), limit=c.config.digest.limit
-    )
-    typer.echo(f"digest: {path}")
+    typer.echo(pipeline.write_shortlist(c.store, c.paths.shortlist, date.today()))
+    typer.echo(f"shortlist: {c.paths.shortlist}")
 
 
 @app.command()
@@ -172,10 +184,7 @@ def check(
     info = _fetch(c, source, fixture)
     if not no_score:
         _score(c, rescore=rescore)
-    path = pipeline.build_digest(
-        c.store, c.paths.digests, date.today(), info, limit=c.config.digest.limit
-    )
-    typer.echo(f"digest: {path}")
+    _digest(c, info)
 
 
 @app.command()
@@ -201,6 +210,7 @@ def rate(
     for err in result.errors:
         typer.echo(f"  ! {digest_file.name}: {err}", err=True)
     typer.echo(f"{result.added} rating(s) ingested from {digest_file.name}")
+    pipeline.write_shortlist(store, c.paths.shortlist, date.today())
     if no_learn:
         return
     if result.added < MIN_RATINGS_TO_LEARN and not force:
