@@ -1,11 +1,13 @@
 :root {
   --bg: #fafafa; --fg: #1a1a1a; --muted: #6b6b6b; --border: #d9d9d9; --card: #fff;
   --accent: #2456c4; --accent-fg: #fff; --danger: #b3261e; --flash: #eef3ff; --pill: #f0f0f0;
+  --warn: #ffd54a; --warn-fg: #3b2f00;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #131416; --fg: #e8e8e8; --muted: #9a9a9a; --border: #333; --card: #1c1d20;
     --accent: #6f9cff; --accent-fg: #0b1220; --danger: #ff7b72; --flash: #1c2540; --pill: #26282c;
+    --warn: #6b5300; --warn-fg: #ffe58a;
   }
 }
 * { box-sizing: border-box; }
@@ -25,6 +27,13 @@ h1 small, .muted { color: var(--muted); font-weight: 400; }
 h2 { font-size: 1.1rem; margin: 1.6rem 0 0.6rem; }
 .flash { padding: 0.6rem 0.8rem; border-radius: 6px; background: var(--flash); }
 .flash.error { color: var(--danger); border: 1px solid var(--danger); background: transparent; }
+.update { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding: 0.8rem 1rem;
+          background: var(--warn); color: var(--warn-fg); border-bottom: 1px solid var(--border); }
+.update > div { flex: 1 1 20rem; }
+.update p { margin: 0.4rem 0 0; color: inherit; opacity: 0.8; }
+.update ul { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+.update button[type=submit] { background: var(--warn-fg); color: var(--warn);
+                              border-color: var(--warn-fg); font-weight: 600; white-space: nowrap; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.6rem; }
 .stats div { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
              padding: 0.6rem 0.8rem; }

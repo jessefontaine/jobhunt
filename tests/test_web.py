@@ -4,13 +4,31 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
+from jobhunt.update import Available, EngineInstall, Entry, Updater
 from jobhunt.web.app import create_app
 from jobhunt.web.jobs import JobRunner
+
+GIT_INSTALL = EngineInstall(url="https://github.com/x/jobhunt", commit="a" * 40, editable=False)
+ENTRIES = [
+    Entry("0.2.0", "2026-09-20", ["Update banner."]),
+    Entry("0.1.0", "2026-09-19", ["Browser UI."]),
+]
+
+
+def updater(ws, install=GIT_INSTALL, available=None, **kw):
+    """An Updater that never touches git; `available` is what the last check would have found."""
+    u = Updater(install, ws.paths.root, version="0.2.0", changelog=ENTRIES, **kw)
+    u.available = available
+    return u
+
+
+def web(ws, updater=None, jobs=None):
+    return TestClient(create_app(ws, jobs or JobRunner(background=False), updater))
 
 
 @pytest.fixture
 def client(ws):
-    return TestClient(create_app(ws, JobRunner(background=False)))
+    return web(ws, updater(ws))
 
 
 def fetched(ws):
@@ -202,3 +220,69 @@ def test_sources_editor_save_reloads_config(client, ws):
 def test_unknown_file_is_404(client):
     assert client.get("/files/etc-passwd").status_code == 404
     assert client.post("/files/etc-passwd", data={"text": "x"}).status_code == 404
+
+
+# -- self-update ---------------------------------------------------------------------
+
+NEWER = Available("b" * 40, "0.3.0", [Entry("0.3.0", "2026-09-21", ["Faster scoring."])])
+
+
+def test_no_banner_when_up_to_date(client):
+    assert 'class="update"' not in client.get("/").text
+
+
+def test_banner_shows_the_new_version_and_notes_on_every_page(ws):
+    client = web(ws, updater(ws, available=NEWER))
+    for path in ("/", "/queue", "/files/profile"):
+        page = client.get(path).text
+        assert "jobhunt 0.3.0 is available" in page and "you have 0.2.0" in page
+        assert "Faster scoring." in page and 'action="/actions/update"' in page
+        assert "<button type=\"submit\">Update &amp; restart</button>" in page
+
+
+def test_banner_flags_a_commit_without_a_version_bump(ws):
+    client = web(ws, updater(ws, available=Available("b" * 40, "0.2.0", [])))
+    page = client.get("/").text
+    assert "still 0.2.0" in page and "no changelog entry" in page
+
+
+def test_banner_button_is_disabled_while_a_job_runs(ws):
+    jobs = JobRunner()  # real background thread
+    client = web(ws, updater(ws, available=NEWER), jobs)
+    release = threading.Event()
+    jobs.start("check", lambda progress: release.wait(5))
+    try:
+        page = client.get("/").text
+        assert '<button type="submit" disabled>Update &amp; restart</button>' in page
+    finally:
+        release.set()
+
+
+def test_update_action_runs_the_updater_as_a_job(ws, monkeypatch):
+    monkeypatch.setenv("UV", "/opt/uv")
+    calls = []
+
+    def fake_stream(argv, progress):
+        calls.append(argv)
+        progress("synced")
+        return 0
+
+    restarted = threading.Event()
+    u = updater(ws, available=NEWER, stream=fake_stream, restart=restarted.set, restart_delay=0.0)
+    client = web(ws, u)
+    r = client.post("/actions/update", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    job = client.get("/jobs/1").json()
+    assert job["name"] == "update" and job["status"] == "done"
+    assert "synced" in job["lines"] and job["lines"][-1] == "restarting…"
+    assert calls[0][1:4] == ["sync", "--upgrade-package", "jobhunt"]
+    assert restarted.wait(2)
+    page = client.get("/").text
+    assert 'data-name="update"' in page and "restarting…" in page
+
+
+def test_health_reports_version_and_a_boot_id(client):
+    health = client.get("/health").json()
+    assert health["version"] == "0.2.0" and len(health["boot"]) == 32
+    client.post("/actions/digest")
+    assert f'data-boot="{health["boot"]}"' in client.get("/").text

@@ -14,7 +14,6 @@ learning will fail. Install it and run <code>claude login</code>.</p>
 </section>
 <p class="muted">Newest digest: {% if stats.newest_digest %}<code>digests/{{ stats.newest_digest }}</code>{% else %}none yet{% endif %}</p>
 
-{% set busy = job and job.running %}
 <h2>Actions</h2>
 <section class="actions">
   <form method="post" action="/actions/check" class="action">
@@ -57,7 +56,8 @@ learning will fail. Install it and run <code>claude login</code>.</p>
 
 <h2>Job</h2>
 {% if job %}
-<section class="job" id="job" data-id="{{ job.id }}" data-status="{{ job.status }}" data-lines="{{ job.lines|length }}">
+<section class="job" id="job" data-id="{{ job.id }}" data-name="{{ job.name }}"
+         data-status="{{ job.status }}" data-lines="{{ job.lines|length }}" data-boot="{{ boot }}">
   <p><b>{{ job.name }}</b> · <span id="job-status">{{ job.status }}</span>
      · started {{ job.started_at.strftime("%H:%M:%S") }}</p>
   <pre id="job-log">{% for line in job.lines %}{{ line }}
