@@ -94,9 +94,9 @@ without cached credentials fails instead of hanging) and a 60 s timeout; non-zer
 `UpdateError` with stderr.
 
 ```python
-def remote_head(install, run=run_git) -> str
-    # git ls-remote <url> <branch or HEAD>  -> first field
-def remote_file(install, ref, path, run=run_git) -> tuple[str, str]
+def remote_head(url, ref, run=run_git) -> str
+    # git ls-remote <url> <ref>  (ref = the pinned branch, or HEAD)  -> first field
+def remote_file(url, ref, path, run=run_git) -> tuple[str, str]
     # in a TemporaryDirectory: git init -q --bare; git fetch -q --depth=1 --filter=blob:none <url> <ref>;
     # returns (git rev-parse FETCH_HEAD, git show FETCH_HEAD:<path>)
 ```
@@ -113,7 +113,8 @@ def stream(argv: list[str], progress: Progress, cwd: Path | None = None) -> int
 
 class Updater:
     def __init__(self, install: EngineInstall, project: Path, *, run_git=run_git,
-                 stream=stream, restart=restart, interval=3600.0)
+                 version=None, changelog=None, stream=stream, restart=restart,
+                 restart_delay=1.0, interval=3600.0)   # version/changelog: test overrides
     install: EngineInstall
     project: Path                 # the workspace root, i.e. the uv project whose venv we run in
     version: str                  # installed_version()
@@ -159,8 +160,8 @@ Python sockets are close-on-exec, so the listening port is free for the new proc
 `create_app(ws, jobs=None, updater=None)`; `None` →
 `Updater(EngineInstall.detect(), ws.paths.root)` with no polling thread. `cli.serve` builds the `Updater`, calls `start()`, and passes it in.
 
-- `render()` adds `update=updater.available` and `busy=` (a job is running) to every page's
-  context, so `base.html` can draw the banner under the nav.
+- `render()` adds `update=updater.available`, `version=updater.version` and `busy=` (a job is
+  running) to every page's context, so `base.html` can draw the banner under the nav.
 - **Banner** (`base.html`), amber, on every page:
   `⬆ jobhunt <new> is available — you have <installed>.` then the new entries as bullets, then
   a form `POST /actions/update` with an **Update & restart** button (disabled while a job
