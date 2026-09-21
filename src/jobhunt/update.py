@@ -197,7 +197,8 @@ class Updater:
         stream: Streamer = stream,
         restart: Callable[[], None] = restart,
         restart_delay: float = 1.0,
-        interval: float = 3600.0,
+        interval: float = 600.0,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         self.install = install
         self.project = project  # the workspace: the uv project whose venv we run in
@@ -209,6 +210,7 @@ class Updater:
         self._restart = restart
         self._restart_delay = restart_delay
         self._interval = interval
+        self._sleep = sleep
         self._seen: dict[str, Available] = {}  # remote commit -> what it offers
 
     def check(self) -> Available | None:
@@ -242,7 +244,7 @@ class Updater:
         def loop() -> None:
             while True:
                 self.check()
-                time.sleep(self._interval)
+                self._sleep(self._interval)
 
         threading.Thread(target=loop, daemon=True, name="jobhunt-update-check").start()
 

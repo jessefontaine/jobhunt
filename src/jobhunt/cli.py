@@ -187,7 +187,7 @@ def serve(
 
     ws = _workspace(ctx)
     updater = Updater(EngineInstall.detect(), ws.paths.root)
-    updater.start()  # hourly `git ls-remote`; the UI shows a banner when the engine moved
+    updater.start()  # `git ls-remote` every 10 min; the UI shows a banner when the engine moved
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     typer.echo(f"jobhunt UI: {url} (Ctrl-C to stop)")
     if open_browser:

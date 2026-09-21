@@ -251,6 +251,23 @@ def test_start_checks_in_the_background(tmp_path):
     assert checked.wait(2)
 
 
+def test_start_rechecks_every_ten_minutes_by_default(tmp_path):
+    slept: list[float] = []
+    parked = threading.Event()
+
+    def git(args, cwd):
+        return "a" * 40 + "\tHEAD\n"
+
+    def sleep(seconds):
+        slept.append(seconds)
+        parked.set()
+        threading.Event().wait()  # keep the daemon thread from looping again
+
+    Updater(INSTALLED, tmp_path, version="0.2.0", changelog=[], run_git=git, sleep=sleep).start()
+    assert parked.wait(2)
+    assert slept == [600]
+
+
 def test_stream_feeds_lines_to_progress_and_returns_the_exit_code():
     lines = []
     script = "print('a'); print('b'); raise SystemExit(3)"
