@@ -9,7 +9,10 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import metadata, resources
@@ -139,3 +142,71 @@ def remote_file(url: str, ref: str, path: str, run: GitRunner = run_git) -> tupl
         run(["fetch", "-q", "--depth=1", "--filter=blob:none", url, ref], cwd)
         commit = run(["rev-parse", "FETCH_HEAD"], cwd).strip()
         return commit, run(["show", f"FETCH_HEAD:{path}"], cwd)
+
+
+# -- the object the web app holds -------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Available:
+    commit: str
+    version: str  # the version at that commit
+    entries: list[Entry]  # changelog entries newer than the installed version; may be empty
+
+
+class Updater:
+    """Knows what is installed, checks the remote in the background, runs the update."""
+
+    def __init__(
+        self,
+        install: EngineInstall,
+        project: Path,
+        *,
+        version: str | None = None,
+        changelog: list[Entry] | None = None,
+        run_git: GitRunner = run_git,
+        interval: float = 3600.0,
+    ):
+        self.install = install
+        self.project = project  # the workspace: the uv project whose venv we run in
+        self.version = version or installed_version()
+        self.changelog = installed_changelog() if changelog is None else changelog
+        self.available: Available | None = None
+        self._run_git = run_git
+        self._interval = interval
+        self._seen: dict[str, Available] = {}  # remote commit -> what it offers
+
+    def check(self) -> Available | None:
+        """Refresh `available`; a failed check is one stderr line and leaves it unchanged."""
+        try:
+            self.available = self._check()
+        except UpdateError as exc:
+            print(f"update check: {exc}", file=sys.stderr)
+        return self.available
+
+    def _check(self) -> Available | None:
+        if self.install.editable or not self.install.url:
+            return None
+        ref = self.install.branch or "HEAD"
+        head = remote_head(self.install.url, ref, self._run_git)
+        if head == self.install.commit:
+            return None
+        if head not in self._seen:
+            commit, text = remote_file(self.install.url, ref, CHANGELOG_PATH, self._run_git)
+            entries = parse_changelog(text)
+            if not entries:
+                raise UpdateError(f"no changelog entries at {commit[:7]}")
+            mine = version_key(self.version)
+            newer = [e for e in entries if version_key(e.version) > mine]
+            self._seen[head] = Available(commit, entries[0].version, newer)
+        return self._seen[head]
+
+    def start(self) -> None:
+        """Check now and then every `interval` seconds, in a daemon thread."""
+
+        def loop() -> None:
+            while True:
+                self.check()
+                time.sleep(self._interval)
+
+        threading.Thread(target=loop, daemon=True, name="jobhunt-update-check").start()

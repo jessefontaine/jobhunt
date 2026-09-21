@@ -1,15 +1,18 @@
 """Engine self-update: changelog format, install detection, remote check, update job."""
 
 import re
+import threading
 import tomllib
 from pathlib import Path
 
 import pytest
 
 from jobhunt.update import (
+    Available,
     EngineInstall,
     Entry,
     UpdateError,
+    Updater,
     installed_changelog,
     installed_version,
     parse_changelog,
@@ -146,3 +149,101 @@ def test_remote_file_fetches_blobless_into_a_temp_repo():
     commit, text = remote_file(GIT_URL, "main", "src/jobhunt/CHANGELOG.md", fake)
     assert (commit, text) == ("cafe42", "# Changelog\n")
     assert calls == ["init", "fetch", "rev-parse", "show"]
+
+
+REMOTE_CHANGELOG = """\
+# Changelog
+
+## 0.3.0 — 2026-09-21
+- Faster scoring.
+
+## 0.2.0 — 2026-09-20
+- Update banner.
+"""
+INSTALLED = EngineInstall(url=GIT_URL, commit="a" * 40, editable=False)
+
+
+class FakeGit:
+    """Answers ls-remote with `head` and `show` with `changelog`; records the subcommands."""
+
+    def __init__(self, head, changelog=REMOTE_CHANGELOG, fail=False):
+        self.head, self.changelog, self.fail = head, changelog, fail
+        self.calls = []
+
+    def __call__(self, args, cwd):
+        self.calls.append(args[0])
+        if self.fail:
+            raise UpdateError("boom")
+        match args[0]:
+            case "ls-remote":
+                return f"{self.head}\t{args[2]}\n"
+            case "rev-parse":
+                return self.head + "\n"
+            case "show":
+                return self.changelog
+        return ""
+
+
+def make_updater(tmp_path, git, install=INSTALLED, version="0.2.0"):
+    return Updater(install, tmp_path, version=version, changelog=[], run_git=git)
+
+
+def test_check_finds_nothing_when_the_remote_is_at_the_installed_commit(tmp_path):
+    git = FakeGit(head="a" * 40)
+    assert make_updater(tmp_path, git).check() is None
+    assert git.calls == ["ls-remote"]
+
+
+def test_check_reports_a_newer_commit_with_only_the_newer_entries(tmp_path):
+    git = FakeGit(head="b" * 40)
+    updater = make_updater(tmp_path, git)
+    assert updater.check() == Available(
+        "b" * 40, "0.3.0", [Entry("0.3.0", "2026-09-21", ["Faster scoring."])]
+    )
+    assert updater.available is not None
+    assert git.calls == ["ls-remote", "init", "fetch", "rev-parse", "show"]
+    updater.check()  # the changelog fetch happens once per remote commit
+    assert git.calls[5:] == ["ls-remote"]
+
+
+def test_check_uses_the_pinned_branch(tmp_path):
+    git = FakeGit(head="b" * 40)
+    calls = []
+
+    def recording(args, cwd):
+        calls.append(args)
+        return git(args, cwd)
+
+    pinned = EngineInstall(url=GIT_URL, commit="a" * 40, branch="dev", editable=False)
+    make_updater(tmp_path, recording, install=pinned).check()
+    assert calls[0] == ["ls-remote", GIT_URL, "dev"]
+    assert calls[2][0] == "fetch" and calls[2][-1] == "dev"
+
+
+def test_check_flags_a_commit_without_a_version_bump(tmp_path):
+    git = FakeGit(head="b" * 40)
+    result = make_updater(tmp_path, git, version="0.3.0").check()
+    assert result == Available("b" * 40, "0.3.0", [])
+
+
+def test_check_swallows_errors_and_says_so_on_stderr(tmp_path, capsys):
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40, fail=True))
+    assert updater.check() is None and updater.available is None
+    assert "update check: boom" in capsys.readouterr().err
+
+
+def test_check_does_nothing_for_an_editable_install(tmp_path):
+    git = FakeGit(head="b" * 40)
+    assert make_updater(tmp_path, git, install=EngineInstall(editable=True)).check() is None
+    assert git.calls == []
+
+
+def test_start_checks_in_the_background(tmp_path):
+    checked = threading.Event()
+
+    def git(args, cwd):
+        checked.set()
+        return "a" * 40 + "\tHEAD\n"
+
+    Updater(INSTALLED, tmp_path, version="0.2.0", changelog=[], run_git=git, interval=3600).start()
+    assert checked.wait(2)
