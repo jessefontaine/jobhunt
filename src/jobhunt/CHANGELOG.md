@@ -4,6 +4,10 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.3.2 — 2026-09-21
+- CLAUDE.md files: the workspace one lists the layout (who writes each file) and the rules for
+  the user's Claude; the engine one gets a module map and the test conventions.
+
 ## 0.3.1 — 2026-09-21
 - README: a Setup section that walks through installing uv, Claude Code and git.
 
