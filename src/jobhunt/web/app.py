@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from jobhunt import pipeline
 from jobhunt.config import ConfigError, parse_config
 from jobhunt.digest import newest_digest
+from jobhunt.feedback import issue_url
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import learned_at, record_rating
 from jobhunt.sources import list_sources
@@ -84,6 +85,10 @@ def create_app(
             "boot": boot,
             "changelog": updater.changelog,
             "install": updater.install,
+            "feedback": {
+                kind: issue_url(kind, updater.install, updater.version)
+                for kind in ("bug", "feature")
+            },
         }
 
     @app.get("/", response_class=HTMLResponse)

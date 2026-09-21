@@ -61,6 +61,8 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
   where you change an old rating.
 - **Profile / Preferences / CV / Sources** — edit the workspace files in place
   (`sources.yaml` is validated before saving).
+- **Feedback** — *Report a bug* / *Suggest a feature* open a prefilled issue form on GitHub
+  (engine version and OS already filled in); you write the rest and submit it there.
 
 It binds to localhost without authentication; `--host 0.0.0.0` exposes it, including file
 editing, to your network.
