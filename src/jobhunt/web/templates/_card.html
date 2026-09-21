@@ -1,0 +1,31 @@
+{% macro card(item, labels) %}
+{% set lst = item.listing %}{% set score = item.score %}{% set rating = item.rating %}
+<article class="card{% if rating %} rated{% endif %}" data-id="{{ lst.id }}">
+  <h3><a href="{{ lst.url }}" target="_blank" rel="noopener">{{ lst.title }}</a></h3>
+  <p class="employer">{{ lst.employer }}</p>
+  <p class="meta">
+    {% if score %}<span class="score">score {{ score.score }}</span> · {{ score.role_type }} · {% endif %}
+    {% if lst.location %}{{ lst.location }} · {% endif %}
+    {% if lst.posted %}posted {{ lst.posted }} · {% endif %}
+    {% if lst.deadline %}<span{% if item.expired %} class="expired"{% endif %}>deadline {{ lst.deadline }}{% if item.expired %} (expired){% endif %}</span> · {% endif %}
+    {{ lst.source }}
+  </p>
+  {% if score %}
+    {% if score.area_tags %}<p class="tags">{% for t in score.area_tags %}<span class="tag">{{ t }}</span>{% endfor %}</p>{% endif %}
+    <p><b>Why:</b> {{ score.why }}</p>
+    {% if score.concerns %}<p><b>Concerns:</b> {{ score.concerns }}</p>{% endif %}
+  {% endif %}
+  {% if lst.description or lst.summary %}
+  <details><summary>Description</summary><pre class="description">{{ lst.description or lst.summary }}</pre></details>
+  {% endif %}
+  <form class="rate" data-id="{{ lst.id }}">
+    <span class="buttons">
+    {% for n in [5, 4, 3, 2, 1] %}
+      <button type="button" name="rating" value="{{ n }}"{% if rating and rating.rating == n %} class="selected"{% endif %}>{{ n }} <small>{{ labels[n] }}</small></button>
+    {% endfor %}
+    </span>
+    <input type="text" name="note" placeholder="note (optional)" value="{{ rating.note if rating else '' }}">
+    <span class="status">{% if rating %}rated {{ rating.rating }}/5 on {{ rating.rated_at.strftime("%Y-%m-%d") }}{% endif %}</span>
+  </form>
+</article>
+{% endmacro %}

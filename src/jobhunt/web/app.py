@@ -12,12 +12,21 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from jobhunt import pipeline
 from jobhunt.digest import newest_digest
-from jobhunt.ratings import learned_at
+from jobhunt.models import Listing, Rating, Score
+from jobhunt.ratings import learned_at, record_rating
 from jobhunt.web.jobs import JobBusy, JobRunner, Progress
 from jobhunt.workspace import Workspace
 
 HERE = Path(__file__).parent
+
+RATING_LABELS = {5: "apply", 4: "strong", 3: "maybe", 2: "not really", 1: "irrelevant"}
+
+
+def _item(lst: Listing, score: Score | None, rating: Rating | None, today: date) -> dict:
+    """One listing card's worth of template context."""
+    return {"listing": lst, "score": score, "rating": rating, "expired": lst.is_expired(today)}
 
 
 def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
@@ -111,5 +120,73 @@ def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
         if job is None:
             return JSONResponse({"error": "no such job"}, status_code=404)
         return job.as_dict()
+
+    # -- listing pages -------------------------------------------------------
+
+    def listing_page(request: Request, title: str, mode: str, sections: list) -> HTMLResponse:
+        total = sum(len(items) for _, items in sections)
+        return render(
+            request,
+            "listings.html",
+            title=title,
+            mode=mode,
+            sections=sections,
+            total=total,
+            labels=RATING_LABELS,
+        )
+
+    @app.get("/queue", response_class=HTMLResponse)
+    def queue(request: Request):
+        store, today = ws.store, date.today()
+        listings = store.candidate_listings(today)
+        scores = store.get_scores([lst.id for lst in listings])
+        scored = sorted(
+            (lst for lst in listings if lst.id in scores),
+            key=lambda lst: scores[lst.id].score,
+            reverse=True,
+        )
+        unscored = [lst for lst in listings if lst.id not in scores]
+        sections = [
+            ("", [_item(lst, scores[lst.id], None, today) for lst in scored]),
+            ("Unscored", [_item(lst, None, None, today) for lst in unscored]),
+        ]
+        return listing_page(request, "Queue", "queue", sections)
+
+    @app.get("/shortlist", response_class=HTMLResponse)
+    def shortlist(request: Request):
+        store, today = ws.store, date.today()
+        rows = store.shortlist(today)
+        pipeline.write_shortlist(store, ws.paths.shortlist, today)
+        scores = store.get_scores([lst.id for lst, _ in rows])
+        items = [_item(lst, scores.get(lst.id), rating, today) for lst, rating in rows]
+        return listing_page(request, "Shortlist", "shortlist", [("", items)])
+
+    @app.get("/rated", response_class=HTMLResponse)
+    def rated(request: Request):
+        store, today = ws.store, date.today()
+        rows = store.all_ratings()
+        scores = store.get_scores([lst.id for lst, _ in rows])
+        items = [_item(lst, scores.get(lst.id), rating, today) for lst, rating in rows]
+        return listing_page(request, "Rated", "rated", [("", items)])
+
+    @app.post("/ratings")
+    def post_rating(
+        listing_id: str = Form(...),
+        rating: int = Form(..., ge=1, le=5),
+        note: str = Form(""),
+    ):
+        store = ws.store
+        if store.get_listing(listing_id) is None:
+            return JSONResponse({"error": "no such listing"}, status_code=404)
+        note = note.strip()
+        saved = record_rating(store, ws.paths.ratings, listing_id, rating, note, digest="web")
+        pipeline.write_shortlist(store, ws.paths.shortlist, date.today())
+        return {
+            "listing_id": listing_id,
+            "rating": rating,
+            "note": note,
+            "changed": saved is not None,
+            "since_learned": store.ratings_since(learned_at(store)),
+        }
 
     return app

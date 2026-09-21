@@ -98,3 +98,61 @@ def test_second_action_while_running_is_409(ws):
         assert '<button type="submit" disabled>' in r.text
     finally:
         release.set()
+
+
+def test_queue_lists_open_unrated_best_first(client, ws):
+    fetched(ws)
+    ws.score()
+    page = client.get("/queue").text
+    assert "PhD vision" in page and "RA fMRI" in page and "Old job" not in page
+    assert page.index("score 90") < page.index("score 80")
+    assert "<b>Why:</b> why" in page
+    assert "Deep nets for vision" in page  # description falls back to the summary
+    assert "Unscored" not in page
+
+
+def test_queue_puts_unscored_listings_last(client, ws):
+    fetched(ws)
+    page = client.get("/queue").text
+    assert "<h2>Unscored</h2>" in page
+    assert '<h1>Queue <small class="muted">2</small></h1>' in page
+
+
+def test_rating_moves_listing_from_queue_to_shortlist_and_rated(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "PhD vision")
+    r = client.post("/ratings", data={"listing_id": lid, "rating": "5", "note": " dream lab "})
+    assert r.status_code == 200
+    assert r.json() == {
+        "listing_id": lid,
+        "rating": 5,
+        "note": "dream lab",
+        "changed": True,
+        "since_learned": 1,
+    }
+    assert ws.store.get_rating(lid).rating == 5
+    assert '"digest":"web"' in ws.paths.ratings.read_text()
+    assert "PhD vision" in ws.paths.shortlist.read_text()
+    assert "PhD vision" not in client.get("/queue").text
+    shortlist = client.get("/shortlist").text
+    assert "PhD vision" in shortlist and "dream lab" in shortlist
+    assert 'value="5" class="selected"' in shortlist
+    assert "PhD vision" in client.get("/rated").text
+    again = client.post("/ratings", data={"listing_id": lid, "rating": "5", "note": "dream lab"})
+    assert again.json()["changed"] is False
+
+
+def test_rated_page_marks_expired_listings(client, ws):
+    fetched(ws)
+    client.post("/ratings", data={"listing_id": listing_id(ws, "Old job"), "rating": "3"})
+    page = client.get("/rated").text
+    assert "Old job" in page and "(expired)" in page
+    assert "Old job" not in client.get("/shortlist").text
+
+
+def test_rating_validation(client, ws):
+    fetched(ws)
+    assert client.post("/ratings", data={"listing_id": "nope", "rating": "5"}).status_code == 404
+    lid = listing_id(ws, "PhD vision")
+    assert client.post("/ratings", data={"listing_id": lid, "rating": "9"}).status_code == 422
+    assert client.post("/ratings", data={"listing_id": lid}).status_code == 422
