@@ -259,3 +259,17 @@ def test_init_refuses_non_empty_dir(tmp_path):
     result = runner.invoke(app, ["init", str(tmp_path)])
     assert result.exit_code == 1
     assert "not empty" in result.output
+
+
+def test_serve_help_lists_its_options(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["serve", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--port" in result.output and "--no-open" in result.output
+
+
+def test_serve_requires_a_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["serve", "--no-open"])
+    assert result.exit_code == 1
+    assert NO_WORKSPACE in result.output

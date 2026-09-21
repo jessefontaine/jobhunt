@@ -6,6 +6,8 @@ publish it.
 
 - `/jobhunt` runs the pipeline and records chat ratings — use it rather than scoring listings
   yourself.
+- `uv run jobhunt serve` runs a local browser UI for the same pipeline; ratings made there land
+  in `data/ratings.jsonl` like `jobhunt rate` does.
 - Scoring and preference learning go through the shell `claude` CLI (`claude -p`); if it reports
   `OAuth session expired`, the user has to run `claude login`.
 - Never work around scraper blocks (403/CAPTCHA/sign-in walls) — surface the manual link instead.

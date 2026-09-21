@@ -50,8 +50,9 @@ next steps:
   1. edit {dir}/profile/profile.md (and profile/preferences.md -> ## Manual)
   2. put your CV PDF in docs/ and run scripts/extract-cv.sh (or write docs/cv.md by hand)
   3. claude login            (once; scoring uses the claude CLI on your subscription)
-  4. cd {dir} && uv run jobhunt check
-     then rate listings in the digest, or open the folder in Claude Code and type /jobhunt
+  4. cd {dir} && uv run jobhunt serve      (browser UI: run, rate, edit profile)
+     or uv run jobhunt check, then rate in the digest / open the folder in Claude Code
+     and type /jobhunt
 """
 
 
@@ -164,3 +165,28 @@ def sources(ctx: typer.Context) -> None:
     enabled = set(_workspace(ctx).config.enabled_sources())
     for name in list_sources():
         typer.echo(f"{name:20s} {'enabled' if name in enabled else 'disabled'}")
+
+
+@app.command()
+def serve(
+    ctx: typer.Context,
+    host: str = typer.Option(
+        "127.0.0.1", help="Bind address (0.0.0.0 exposes the UI, and file editing, to your network)"
+    ),
+    port: int = typer.Option(8765, help="Port"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the UI in a browser"),
+) -> None:
+    """Run the browser UI: buttons for every command, rating, shortlist, profile editor."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from jobhunt.web.app import create_app
+
+    ws = _workspace(ctx)
+    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
+    typer.echo(f"jobhunt UI: {url} (Ctrl-C to stop)")
+    if open_browser:
+        threading.Timer(0.8, webbrowser.open, args=(url,)).start()
+    uvicorn.run(create_app(ws), host=host, port=port, log_level="warning")

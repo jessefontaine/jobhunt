@@ -10,6 +10,9 @@ against a user's profile with `claude -p`, write digests, learn from ratings. Re
 - Sources are one file each in `src/jobhunt/sources/`; parsers are pure functions tested against
   saved HTML in `tests/fixtures/`. Re-save a fixture when a site changes markup.
 - Workspace templates live in `src/jobhunt/templates/` as `*.tmpl`; `jobhunt init` copies them.
+- The browser UI is `src/jobhunt/web/` (FastAPI + Jinja2, tested with `TestClient` in
+  `tests/test_web.py`). Its `templates/` are web pages, not workspace scaffolding — don't mix
+  them up. CLI and UI both drive `jobhunt.workspace.Workspace`; add pipeline behaviour there.
 - Tests: `uv run pytest`; lint: `uv run ruff check src tests`. TDD: test first.
 - Never work around scraper blocks (403/CAPTCHA/sign-in walls) — surface a manual link instead.
 - Scoring and preference learning go through the shell `claude` CLI; if it reports

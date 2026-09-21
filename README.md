@@ -18,6 +18,7 @@ cd ~/jobhunt
 # 3. edit config/sources.yaml (queries; optional contact: for the User-Agent)
 claude login                 # once — scoring runs through `claude -p`
 uv run jobhunt check         # fetch → score → digests/<today>.md
+uv run jobhunt serve         # or: the browser UI (buttons, rating, shortlist, editors)
 ```
 
 Open the digest, fill in `rating:` (1–5) and optionally `note:` under listings, then
@@ -43,6 +44,23 @@ shows the top matches, and records ratings you give in chat.
 
 If you see `OAuth session expired` / `preferences: failed`, run `claude login` in a terminal.
 
+## Web UI
+
+`uv run jobhunt serve` opens http://127.0.0.1:8765 with the same pipeline behind buttons:
+
+- **Dashboard** — counts, *Check / Fetch / Score / Digest* with option boxes for `--source`,
+  `--no-score` and `--rescore`, *Regenerate preferences* (shows how many ratings arrived since
+  the last time), and a live log of the running job. One job runs at a time.
+- **Queue** — open, unrated listings best-first; click 1–5 (and type a note) to rate. Ratings go
+  straight into `data/ratings.jsonl` and the store, so digests are just a record here.
+- **Shortlist** and **Rated** — what you rated 4–5 that is still open; everything you rated,
+  where you change an old rating.
+- **Profile / Preferences / CV / Sources** — edit the workspace files in place
+  (`sources.yaml` is validated before saving).
+
+It binds to localhost without authentication; `--host 0.0.0.0` exposes it, including file
+editing, to your network.
+
 ## Commands
 
 | command | does |
@@ -55,6 +73,7 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 | `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
 | `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |
+| `jobhunt serve [--host H] [--port N] [--no-open]` | run the browser UI |
 
 All commands except `init` must run inside a workspace (a directory containing
 `config/sources.yaml`) or be given `--root DIR`.
@@ -110,5 +129,9 @@ To run your own workspace against a local checkout, add to the workspace `pyproj
 [tool.uv.sources]
 jobhunt = { path = "../path/to/this/checkout", editable = true }
 ```
+
+The browser UI lives in `src/jobhunt/web/` (FastAPI + Jinja2; `tests/test_web.py` drives it
+with a test client). Its `templates/` are web pages — `src/jobhunt/templates/` are the
+workspace scaffolding files, a different thing.
 
 Design notes: `docs/superpowers/specs/`.

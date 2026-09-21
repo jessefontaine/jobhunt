@@ -19,6 +19,7 @@ yourself — `jobhunt score` does that, so results stay reproducible and the rat
 | Re-score everything after the user edited `profile/profile.md` or `profile/preferences.md` | `uv run jobhunt check --rescore` (replaces old scores; one Claude call per batch of 10, so mention it takes a while) |
 | Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |
 | Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` alphabetically — don't trust `ls | tail`) |
+| Browser UI (buttons, rating queue, editors) | `uv run jobhunt serve` — runs until Ctrl-C, so start it in a terminal the user controls, not from a tool call that waits for exit |
 
 ## Presenting a digest
 
