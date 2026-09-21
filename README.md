@@ -123,6 +123,10 @@ uv run pytest
 uv run ruff check src tests
 ```
 
+Every PR bumps `version` in `pyproject.toml` and adds an entry at the top of
+[`src/jobhunt/CHANGELOG.md`](src/jobhunt/CHANGELOG.md) — the UI shows it, and a test checks
+the two agree.
+
 To run your own workspace against a local checkout, add to the workspace `pyproject.toml`:
 
 ```toml

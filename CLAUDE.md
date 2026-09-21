@@ -17,3 +17,6 @@ against a user's profile with `claude -p`, write digests, learn from ratings. Re
 - Never work around scraper blocks (403/CAPTCHA/sign-in walls) — surface a manual link instead.
 - Scoring and preference learning go through the shell `claude` CLI; if it reports
   `OAuth session expired`, the user has to run `claude login`.
+- Every PR bumps `version` in `pyproject.toml` and adds a matching `## x.y.z — YYYY-MM-DD`
+  entry at the top of `src/jobhunt/CHANGELOG.md` (`tests/test_update.py` checks they agree).
+  The UI's update banner and dashboard changelog are built from that file.
