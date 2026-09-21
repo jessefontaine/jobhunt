@@ -1,6 +1,7 @@
 """Engine self-update: changelog format, install detection, remote check, update job."""
 
 import re
+import sys
 import threading
 import tomllib
 from pathlib import Path
@@ -19,6 +20,7 @@ from jobhunt.update import (
     remote_file,
     remote_head,
     run_git,
+    stream,
     version_key,
 )
 
@@ -247,3 +249,89 @@ def test_start_checks_in_the_background(tmp_path):
 
     Updater(INSTALLED, tmp_path, version="0.2.0", changelog=[], run_git=git, interval=3600).start()
     assert checked.wait(2)
+
+
+def test_stream_feeds_lines_to_progress_and_returns_the_exit_code():
+    lines = []
+    script = "print('a'); print('b'); raise SystemExit(3)"
+    assert stream([sys.executable, "-c", script], lines.append) == 3
+    assert lines == ["a", "b"]
+
+
+def test_stream_reports_a_missing_program():
+    lines = []
+    assert stream(["/no/such/program"], lines.append) == 127
+    assert lines and lines[0].startswith("/no/such/program:")
+
+
+class FakeStream:
+    """Records argv; answers each call with the next exit code; emits one line per call."""
+
+    def __init__(self, *codes):
+        self.codes, self.calls = list(codes), []
+
+    def __call__(self, argv, progress):
+        self.calls.append(argv)
+        progress(f"ran {argv[0]}")
+        return self.codes.pop(0)
+
+
+def updater_for_update(tmp_path, monkeypatch, streamer, install=INSTALLED):
+    monkeypatch.setenv("UV", "/opt/uv")
+    restarted = threading.Event()
+    updater = Updater(
+        install,
+        tmp_path,
+        version="0.2.0",
+        changelog=[],
+        stream=streamer,
+        restart=restarted.set,
+        restart_delay=0.0,
+    )
+    return updater, restarted
+
+
+def test_update_syncs_smoke_tests_and_restarts(tmp_path, monkeypatch):
+    streamer = FakeStream(0, 0)
+    updater, restarted = updater_for_update(tmp_path, monkeypatch, streamer)
+    log = []
+    updater.update(log.append)
+    assert streamer.calls == [
+        ["/opt/uv", "sync", "--upgrade-package", "jobhunt", "--project", str(tmp_path)],
+        [sys.executable, "-c", "import jobhunt.web.app"],
+    ]
+    assert log[0] == f"$ uv sync --upgrade-package jobhunt --project {tmp_path}"
+    assert "ran /opt/uv" in log and log[-1] == "restarting…"
+    assert restarted.wait(2)
+
+
+def test_update_stops_when_uv_sync_fails(tmp_path, monkeypatch):
+    streamer = FakeStream(1)
+    updater, restarted = updater_for_update(tmp_path, monkeypatch, streamer)
+    with pytest.raises(UpdateError, match="uv sync failed"):
+        updater.update(lambda line: None)
+    assert len(streamer.calls) == 1 and not restarted.wait(0.2)
+
+
+def test_update_does_not_restart_a_release_that_does_not_import(tmp_path, monkeypatch):
+    streamer = FakeStream(0, 1)
+    updater, restarted = updater_for_update(tmp_path, monkeypatch, streamer)
+    with pytest.raises(UpdateError, match="does not import"):
+        updater.update(lambda line: None)
+    assert not restarted.wait(0.2)
+
+
+def test_update_refuses_an_editable_install(tmp_path, monkeypatch):
+    updater, _ = updater_for_update(
+        tmp_path, monkeypatch, FakeStream(), install=EngineInstall(editable=True)
+    )
+    with pytest.raises(UpdateError, match="development checkout"):
+        updater.update(lambda line: None)
+
+
+def test_update_needs_uv(tmp_path, monkeypatch):
+    updater, _ = updater_for_update(tmp_path, monkeypatch, FakeStream())
+    monkeypatch.delenv("UV")
+    monkeypatch.setattr("jobhunt.update.shutil.which", lambda name: None)
+    with pytest.raises(UpdateError, match="uv not found"):
+        updater.update(lambda line: None)

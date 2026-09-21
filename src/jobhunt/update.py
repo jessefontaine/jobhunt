@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -106,6 +107,34 @@ class EngineInstall:
 # -- talking to the remote with the same git that uv installs the engine with ----------
 
 GitRunner = Callable[[list[str], Path | None], str]
+Progress = Callable[[str], None]
+Streamer = Callable[[list[str], Progress], int]
+
+
+def stream(argv: list[str], progress: Progress, cwd: Path | None = None) -> int:
+    """Run a command, feeding each output line to `progress`; returns its exit code."""
+    try:
+        proc = subprocess.Popen(
+            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
+    except OSError as exc:
+        progress(f"{argv[0]}: {exc}")
+        return 127
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        progress(line.rstrip("\n"))
+    return proc.wait()
+
+
+def restart() -> None:
+    """Replace this process with a fresh `jobhunt serve` on the same arguments.
+
+    Sockets are close-on-exec, so the port is free for the new process. The trailing
+    --no-open wins over an earlier --open so the browser does not get a second tab.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, [sys.executable, "-m", "jobhunt", *sys.argv[1:], "--no-open"])
 
 
 def run_git(args: list[str], cwd: Path | None = None) -> str:
@@ -165,6 +194,9 @@ class Updater:
         version: str | None = None,
         changelog: list[Entry] | None = None,
         run_git: GitRunner = run_git,
+        stream: Streamer = stream,
+        restart: Callable[[], None] = restart,
+        restart_delay: float = 1.0,
         interval: float = 3600.0,
     ):
         self.install = install
@@ -173,6 +205,9 @@ class Updater:
         self.changelog = installed_changelog() if changelog is None else changelog
         self.available: Available | None = None
         self._run_git = run_git
+        self._stream = stream
+        self._restart = restart
+        self._restart_delay = restart_delay
         self._interval = interval
         self._seen: dict[str, Available] = {}  # remote commit -> what it offers
 
@@ -210,3 +245,21 @@ class Updater:
                 time.sleep(self._interval)
 
         threading.Thread(target=loop, daemon=True, name="jobhunt-update-check").start()
+
+    def update(self, progress: Progress) -> None:
+        """The `update` job: uv sync, import the new code once, then restart the server."""
+        if self.install.editable:
+            raise UpdateError("development checkout — update it with git pull")
+        uv = os.environ.get("UV") or shutil.which("uv")
+        if not uv:
+            raise UpdateError("uv not found (not on PATH and $UV unset)")
+        argv = [uv, "sync", "--upgrade-package", DIST, "--project", str(self.project)]
+        progress("$ uv " + " ".join(argv[1:]))
+        if self._stream(argv, progress) != 0:
+            raise UpdateError("uv sync failed")
+        progress("checking that the new engine imports…")
+        if self._stream([sys.executable, "-c", "import jobhunt.web.app"], progress) != 0:
+            raise UpdateError("the new engine does not import; not restarting")
+        # Let the job reach `done` and the browser see it before the process is replaced.
+        progress("restarting…")
+        threading.Timer(self._restart_delay, self._restart).start()
