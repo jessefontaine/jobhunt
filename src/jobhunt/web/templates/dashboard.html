@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · jobhunt{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+{% if not stats.claude_cli %}
+<p class="flash error">The <code>claude</code> CLI is not on PATH — scoring and preference
+learning will fail. Install it and run <code>claude login</code>.</p>
+{% endif %}
+<section class="stats">
+  <div><b>{{ stats.open }}</b> open, unrated{% if stats.unscored %} <small>({{ stats.unscored }} unscored)</small>{% endif %}</div>
+  <div><b>{{ stats.shortlist }}</b> on the shortlist</div>
+  <div><b>{{ stats.listings }}</b> listings seen</div>
+  <div><b>{{ stats.ratings }}</b> ratings</div>
+</section>
+<p class="muted">Newest digest: {% if stats.newest_digest %}<code>digests/{{ stats.newest_digest }}</code>{% else %}none yet{% endif %}</p>
+
+{% set busy = job and job.running %}
+<h2>Actions</h2>
+<section class="actions">
+  <form method="post" action="/actions/check" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Check</button>
+    <span>fetch → score → digest</span>
+    <label>source
+      <select name="source">
+        <option value="">all enabled</option>
+        {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label><input type="checkbox" name="no_score" value="1"> skip scoring</label>
+    <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+  </form>
+  <form method="post" action="/actions/fetch" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Fetch</button>
+    <span>only pull new listings into the store</span>
+    <label>source
+      <select name="source">
+        <option value="">all enabled</option>
+        {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+  <form method="post" action="/actions/score" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Score</button>
+    <span>score unscored listings with Claude</span>
+    <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+  </form>
+  <form method="post" action="/actions/digest" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Digest</button>
+    <span>re-render <code>digests/&lt;today&gt;.md</code> and <code>shortlist.md</code></span>
+  </form>
+  <form method="post" action="/actions/learn" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Regenerate preferences</button>
+    <span>{{ stats.since_learned }} rating(s) since {% if stats.learned_at %}{{ stats.learned_at.strftime("%Y-%m-%d %H:%M") }}{% else %}the start{% endif %}
+      — one Claude call, rewrites <code>## Learned</code> in <code>profile/preferences.md</code></span>
+  </form>
+</section>
+
+<h2>Job</h2>
+{% if job %}
+<section class="job" id="job" data-id="{{ job.id }}" data-status="{{ job.status }}" data-lines="{{ job.lines|length }}">
+  <p><b>{{ job.name }}</b> · <span id="job-status">{{ job.status }}</span>
+     · started {{ job.started_at.strftime("%H:%M:%S") }}</p>
+  <pre id="job-log">{% for line in job.lines %}{{ line }}
+{% endfor %}</pre>
+</section>
+{% else %}
+<p class="muted">No job has run yet.</p>
+{% endif %}
+{% endblock %}

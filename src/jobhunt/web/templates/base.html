@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}jobhunt{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="nav">
+  <a href="/" class="brand">jobhunt</a>
+  <nav>
+    {% for href, label in [("/", "Dashboard"), ("/queue", "Queue"), ("/shortlist", "Shortlist"),
+                           ("/rated", "Rated"), ("/files/profile", "Profile"),
+                           ("/files/preferences", "Preferences"), ("/files/cv", "CV"),
+                           ("/files/sources", "Sources")] %}
+    <a href="{{ href }}"{% if request.url.path == href %} class="active"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</header>
+<main>
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+{% if notice %}<p class="flash">{{ notice }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
