@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import uuid
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -18,6 +19,7 @@ from jobhunt.digest import newest_digest
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import learned_at, record_rating
 from jobhunt.sources import list_sources
+from jobhunt.update import EngineInstall, Updater
 from jobhunt.web.jobs import JobBusy, JobRunner, Progress
 from jobhunt.workspace import Workspace
 
@@ -35,15 +37,23 @@ def _item(lst: Listing, score: Score | None, rating: Rating | None, today: date)
     return {"listing": lst, "score": score, "rating": rating, "expired": lst.is_expired(today)}
 
 
-def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
+def create_app(
+    ws: Workspace, jobs: JobRunner | None = None, updater: Updater | None = None
+) -> FastAPI:
     app = FastAPI(title="jobhunt", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     jobs = jobs or JobRunner()
+    updater = updater or Updater(EngineInstall.detect(), ws.paths.root)
+    boot = uuid.uuid4().hex  # changes when the process is replaced after an update
 
     def render(request: Request, template: str, status_code: int = 200, **context):
         context.setdefault("error", None)
         context.setdefault("notice", None)
+        # every page: the update banner and whether its button may be pressed
+        context["update"] = updater.available
+        context["version"] = updater.version
+        context["busy"] = bool(jobs.current and jobs.current.running)
         return templates.TemplateResponse(request, template, context, status_code=status_code)
 
     def stats() -> dict:
@@ -71,6 +81,9 @@ def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
             "job": jobs.current,
             "sources": ws.config.enabled_sources(),
             "error": error,
+            "boot": boot,
+            "changelog": updater.changelog,
+            "install": updater.install,
         }
 
     @app.get("/", response_class=HTMLResponse)
@@ -119,6 +132,14 @@ def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
     @app.post("/actions/learn")
     def action_learn(request: Request):
         return start(request, "learn", ws.learn)
+
+    @app.post("/actions/update")
+    def action_update(request: Request):
+        return start(request, "update", updater.update)
+
+    @app.get("/health")
+    def health():
+        return {"version": updater.version, "boot": boot}
 
     @app.get("/jobs/{job_id}")
     def job_status(job_id: int):

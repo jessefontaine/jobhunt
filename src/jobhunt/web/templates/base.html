@@ -18,6 +18,25 @@
     {% endfor %}
   </nav>
 </header>
+{% if update %}
+<section class="update">
+  <div>
+    {% if update.entries %}
+    <b>⬆ jobhunt {{ update.version }} is available</b> — you have {{ version }}.
+    {% for e in update.entries %}
+    {% if update.entries|length > 1 %}<p class="muted">{{ e.version }} — {{ e.date }}</p>{% endif %}
+    <ul>{% for note in e.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+    {% endfor %}
+    {% else %}
+    <b>⬆ A newer engine commit is on GitHub</b> but its version is still {{ version }} —
+    no changelog entry. Update anyway?
+    {% endif %}
+  </div>
+  <form method="post" action="/actions/update">
+    <button type="submit"{% if busy %} disabled{% endif %}>Update &amp; restart</button>
+  </form>
+</section>
+{% endif %}
 <main>
 {% if error %}<p class="flash error">{{ error }}</p>{% endif %}
 {% if notice %}<p class="flash">{{ notice }}</p>{% endif %}

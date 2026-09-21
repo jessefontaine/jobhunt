@@ -40,7 +40,9 @@ prints it). To change a rating, edit it in the digest you rated it in and run
 | 2 | not really |
 | 1 | irrelevant |
 
-Engine updates: `uv sync --upgrade-package jobhunt` (the first run pins a commit in `uv.lock`).
+Engine updates: the browser UI shows a banner with an *Update & restart* button when a newer
+engine is on GitHub; from a terminal, `uv sync --upgrade-package jobhunt` (the first run pins a
+commit in `uv.lock`).
 
 Or open this folder in Claude Code and type `/jobhunt` — it runs the same commands and records
 ratings you give in chat. Other commands: `jobhunt fetch`, `jobhunt score`, `jobhunt digest`,
