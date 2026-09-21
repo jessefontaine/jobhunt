@@ -7,11 +7,15 @@ from pathlib import Path
 import pytest
 
 from jobhunt.update import (
+    EngineInstall,
     Entry,
     UpdateError,
     installed_changelog,
     installed_version,
     parse_changelog,
+    remote_file,
+    remote_head,
+    run_git,
     version_key,
 )
 
@@ -70,3 +74,75 @@ def test_changelog_matches_package_version():
     keys = [version_key(e.version) for e in entries]
     assert keys == sorted(set(keys), reverse=True), "versions must be strictly descending"
     assert all(e.notes for e in entries), "every changelog entry needs at least one bullet"
+
+
+GIT_URL = "https://github.com/x/jobhunt"
+GIT_JSON = (
+    '{"url": "https://github.com/x/jobhunt", "vcs_info": {"vcs": "git", '
+    '"commit_id": "abc123", "requested_revision": "main"}}'
+)
+EDITABLE_JSON = '{"url": "file:///home/me/code/jobhunt", "dir_info": {"editable": true}}'
+
+
+def test_engine_install_from_a_git_direct_url():
+    install = EngineInstall.from_direct_url(GIT_JSON)
+    assert install == EngineInstall(
+        url=GIT_URL, commit="abc123", branch="main", editable=False, path=None
+    )
+
+
+def test_engine_install_from_an_editable_direct_url():
+    install = EngineInstall.from_direct_url(EDITABLE_JSON)
+    assert install.editable and install.path == Path("/home/me/code/jobhunt")
+    assert install.url is None and install.commit is None
+
+
+@pytest.mark.parametrize("text", [None, "", "not json", "[1, 2]", '{"url": "https://pypi"}'])
+def test_engine_install_treats_anything_odd_as_editable(text):
+    assert EngineInstall.from_direct_url(text).editable
+
+
+def test_engine_install_detect_reads_this_checkout():
+    assert EngineInstall.detect().editable  # the test venv is an editable install
+
+
+def test_run_git_returns_stdout_and_raises_on_failure():
+    assert run_git(["--version"]).startswith("git version")
+    with pytest.raises(UpdateError, match="git no-such-command"):
+        run_git(["no-such-command"])
+
+
+def test_remote_head_takes_the_first_field():
+    calls = []
+
+    def fake(args, cwd):
+        calls.append((args, cwd))
+        return "deadbeef\tHEAD\n"
+
+    assert remote_head(GIT_URL, "HEAD", fake) == "deadbeef"
+    assert calls == [(["ls-remote", GIT_URL, "HEAD"], None)]
+
+
+def test_remote_head_with_no_such_ref_raises():
+    with pytest.raises(UpdateError, match="no main at"):
+        remote_head(GIT_URL, "main", lambda args, cwd: "")
+
+
+def test_remote_file_fetches_blobless_into_a_temp_repo():
+    calls = []
+
+    def fake(args, cwd):
+        calls.append(args[0])
+        assert cwd is not None and cwd.is_dir()
+        if args[0] == "fetch":
+            assert args == ["fetch", "-q", "--depth=1", "--filter=blob:none", GIT_URL, "main"]
+        if args[0] == "rev-parse":
+            return "cafe42\n"
+        if args[0] == "show":
+            assert args == ["show", "FETCH_HEAD:src/jobhunt/CHANGELOG.md"]
+            return "# Changelog\n"
+        return ""
+
+    commit, text = remote_file(GIT_URL, "main", "src/jobhunt/CHANGELOG.md", fake)
+    assert (commit, text) == ("cafe42", "# Changelog\n")
+    assert calls == ["init", "fetch", "rev-parse", "show"]
