@@ -8,6 +8,34 @@ does the judgement calls.
 This repo is the **engine**. Your profile, CV, ratings and digests live in a private
 **workspace** directory that `jobhunt init` creates for you.
 
+## Setup
+
+Linux or macOS (on Windows, use WSL). You need three tools on your PATH; Python itself is not
+one of them — uv fetches 3.12+ when the workspace needs it.
+
+1. **[uv](https://docs.astral.sh/uv/getting-started/installation/)** installs and runs the
+   engine:
+
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. **[Claude Code](https://code.claude.com/docs/en/setup)** does the scoring and preference
+   learning through `claude -p`, on your own Claude subscription — no API key:
+
+   ```bash
+   curl -fsSL https://claude.ai/install.sh | bash
+   claude login
+   ```
+
+3. **git** — usually already there (`git --version`). uv installs the engine from GitHub with
+   it, and the browser UI's update check runs `git ls-remote`. While this repo is private your
+   GitHub account needs access and git needs to authenticate non-interactively (an SSH key, or a
+   credential helper).
+
+Optional: `pdftotext` (poppler) if you want `scripts/extract-cv.sh` to make `docs/cv.md` from a
+PDF; otherwise write `docs/cv.md` by hand.
+
 ## Quickstart
 
 ```bash
@@ -16,7 +44,6 @@ cd ~/jobhunt
 # 1. edit profile/profile.md (what you want, what you can do, what rules a role out)
 # 2. put your CV PDF in docs/ and run scripts/extract-cv.sh  (or write docs/cv.md by hand)
 # 3. edit config/sources.yaml (queries; optional contact: for the User-Agent)
-claude login                 # once — scoring runs through `claude -p`
 uv run jobhunt check         # fetch → score → digests/<today>.md
 uv run jobhunt serve         # or: the browser UI (buttons, rating, shortlist, editors)
 ```
