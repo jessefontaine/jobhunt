@@ -5,7 +5,7 @@ import pytest
 
 from jobhunt.digest import RunInfo, render_digest
 from jobhunt.models import Listing, Rating, Score
-from jobhunt.ratings import ingest_ratings, parse_digest, rebuild_from_jsonl
+from jobhunt.ratings import ingest_ratings, parse_digest, rebuild_from_jsonl, record_rating
 from jobhunt.store import Store
 
 
@@ -124,3 +124,17 @@ def test_rebuild_from_jsonl_replays_latest(env):
     assert n == 3
     assert fresh.get_rating(listings[0].id).rating == 5
     assert fresh.get_rating(listings[1].id).rating == 2
+
+
+def test_record_rating_appends_once_and_dedupes(tmp_path):
+    store = Store(tmp_path / "jobs.sqlite")
+    store.upsert_listings([L(1)])
+    jsonl = tmp_path / "data" / "ratings.jsonl"
+    first = record_rating(store, jsonl, L(1).id, 4, "nice", "web")
+    assert first is not None and store.get_rating(L(1).id).rating == 4
+    assert record_rating(store, jsonl, L(1).id, 4, "nice", "web") is None
+    changed = record_rating(store, jsonl, L(1).id, 2, "on reflection", "web")
+    assert changed is not None and store.get_rating(L(1).id).note == "on reflection"
+    lines = jsonl.read_text().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[-1])["digest"] == "web"

@@ -4,7 +4,7 @@ import pytest
 
 from jobhunt.config import Paths
 from jobhunt.models import Listing, Rating
-from jobhunt.ratings import regenerate_preferences, split_preferences
+from jobhunt.ratings import learned_at, regenerate_preferences, split_preferences
 from jobhunt.store import Store
 
 PREFS = """# Preferences
@@ -103,3 +103,18 @@ def test_preferences_prompt_does_not_assert_who_the_person_is(env):
     regenerate_preferences(paths, store, runner, "sonnet")
     assert "the person described in the profile" in seen["prompt"]
     assert "Master's student" not in seen["prompt"]
+
+
+def test_regenerate_preferences_records_learned_at(env):
+    paths, store = env
+    assert learned_at(store) is None
+    runner = lambda *a: json.dumps({"type": "result", "structured_output": {"rules": ["r1"]}})  # noqa: E731
+    assert regenerate_preferences(paths, store, runner, "m")
+    assert learned_at(store) is not None
+    assert store.ratings_since(learned_at(store)) == 0  # the fixture's ratings predate it
+
+
+def test_failed_regeneration_does_not_record_learned_at(env):
+    paths, store = env
+    assert not regenerate_preferences(paths, store, lambda *a: "garbage", "sonnet")
+    assert learned_at(store) is None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
@@ -65,19 +66,31 @@ class IngestResult:
     ratings: list[Rating] = field(default_factory=list)
 
 
+def record_rating(
+    store: Store, jsonl: Path, listing_id: str, value: int, note: str, digest: str
+) -> Rating | None:
+    """Save one rating to the store and append it to the jsonl log.
+
+    Returns None (and writes nothing) when the same rating and note are already recorded.
+    """
+    existing = store.get_rating(listing_id)
+    if existing and existing.rating == value and existing.note == note:
+        return None
+    rating = Rating(listing_id=listing_id, rating=value, note=note, digest=digest)
+    jsonl.parent.mkdir(parents=True, exist_ok=True)
+    with jsonl.open("a") as fh:
+        fh.write(rating.model_dump_json() + "\n")
+    store.save_rating(rating)
+    return rating
+
+
 def ingest_ratings(store: Store, digest: Path, jsonl: Path) -> IngestResult:
     """Read ratings from `digest`; append new/changed ones to `jsonl` and the store."""
     parsed, errors = parse_digest(digest.read_text())
     result = IngestResult(errors=errors)
-    jsonl.parent.mkdir(parents=True, exist_ok=True)
-    with jsonl.open("a") as fh:
-        for listing_id, value, note in parsed:
-            existing = store.get_rating(listing_id)
-            if existing and existing.rating == value and existing.note == note:
-                continue
-            rating = Rating(listing_id=listing_id, rating=value, note=note, digest=digest.name)
-            fh.write(rating.model_dump_json() + "\n")
-            store.save_rating(rating)
+    for listing_id, value, note in parsed:
+        rating = record_rating(store, jsonl, listing_id, value, note, digest.name)
+        if rating is not None:
             result.ratings.append(rating)
             result.added += 1
     return result
@@ -97,6 +110,14 @@ def rebuild_from_jsonl(store: Store, jsonl: Path) -> int:
 
 
 # -- preferences ------------------------------------------------------------
+
+LEARNED_AT = "learned_at"  # store meta key: when `## Learned` was last regenerated
+
+
+def learned_at(store: Store) -> datetime | None:
+    raw = store.get_meta(LEARNED_AT)
+    return datetime.fromisoformat(raw) if raw else None
+
 
 MANUAL_HEADING = "## Manual"
 LEARNED_HEADING = "## Learned"
@@ -168,4 +189,5 @@ def regenerate_preferences(paths: Paths, store: Store, runner: Runner, model: st
         + f"\n\n{MANUAL_HEADING}\n\n{manual_body}\n\n{LEARNED_HEADING}\n\n{new_learned}\n"
     )
     pref_path.write_text(out)
+    store.set_meta(LEARNED_AT, datetime.now().isoformat())
     return True
