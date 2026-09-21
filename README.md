@@ -51,6 +51,10 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 - **Dashboard** — counts, *Check / Fetch / Score / Digest* with option boxes for `--source`,
   `--no-score` and `--rescore`, *Regenerate preferences* (shows how many ratings arrived since
   the last time), and a live log of the running job. One job runs at a time.
+- **What's new** — the engine's changelog, and an amber banner on every page when GitHub has a
+  newer engine: it lists the new entries and **Update & restart** runs
+  `uv sync --upgrade-package jobhunt`, checks the new code imports, and restarts the server in
+  place (the page reloads by itself). Development checkouts are not updated this way.
 - **Queue** — open, unrated listings best-first; click 1–5 (and type a note) to rate. Ratings go
   straight into `data/ratings.jsonl` and the store, so digests are just a record here.
 - **Shortlist** and **Rated** — what you rated 4–5 that is still open; everything you rated,

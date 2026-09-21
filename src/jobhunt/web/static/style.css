@@ -82,3 +82,6 @@ select, input[type=text], textarea { font: inherit; padding: 0.3rem 0.5rem; bord
 table.sources { border-collapse: collapse; margin-bottom: 0.5rem; }
 table.sources td, table.sources th { border: 1px solid var(--border); padding: 0.2rem 0.7rem;
                                      text-align: left; }
+.changelog h3 { font-size: 1rem; margin: 0.7rem 0 0.1rem; }
+.changelog ul { margin: 0; }
+.changelog summary { cursor: pointer; color: var(--muted); margin-top: 0.6rem; }

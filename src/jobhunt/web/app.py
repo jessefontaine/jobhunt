@@ -82,6 +82,8 @@ def create_app(
             "sources": ws.config.enabled_sources(),
             "error": error,
             "boot": boot,
+            "changelog": updater.changelog,
+            "install": updater.install,
         }
 
     @app.get("/", response_class=HTMLResponse)

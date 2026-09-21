@@ -1,11 +1,21 @@
 // Dashboard: while a job is running, poll its status once a second and append new log lines;
-// reload once it finishes so the counts refresh.
+// reload once it finishes so the counts refresh. After an `update` job the server replaces
+// itself, so wait until /health reports a new boot id before reloading.
 (function () {
   const panel = document.getElementById("job");
   if (!panel || panel.dataset.status !== "running") return;
   const log = document.getElementById("job-log");
   const status = document.getElementById("job-status");
   let shown = Number(panel.dataset.lines);
+  const awaitRestart = async (tries) => {
+    status.textContent = "restarting…";
+    try {
+      const r = await fetch("/health", { cache: "no-store" });
+      if (r.ok && (await r.json()).boot !== panel.dataset.boot) return location.reload();
+    } catch (e) {}
+    if (tries >= 60) return location.reload();
+    setTimeout(() => awaitRestart(tries + 1), 1000);
+  };
   const tick = async () => {
     let job;
     try {
@@ -20,6 +30,7 @@
     shown = job.lines.length;
     status.textContent = job.status;
     if (job.status === "running") setTimeout(tick, 1000);
+    else if (job.status === "done" && panel.dataset.name === "update") awaitRestart(0);
     else location.reload();
   };
   setTimeout(tick, 1000);

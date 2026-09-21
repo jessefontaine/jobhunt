@@ -182,11 +182,14 @@ def serve(
 
     import uvicorn
 
+    from jobhunt.update import EngineInstall, Updater
     from jobhunt.web.app import create_app
 
     ws = _workspace(ctx)
+    updater = Updater(EngineInstall.detect(), ws.paths.root)
+    updater.start()  # hourly `git ls-remote`; the UI shows a banner when the engine moved
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     typer.echo(f"jobhunt UI: {url} (Ctrl-C to stop)")
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
-    uvicorn.run(create_app(ws), host=host, port=port, log_level="warning")
+    uvicorn.run(create_app(ws, updater=updater), host=host, port=port, log_level="warning")

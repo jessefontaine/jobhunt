@@ -1,5 +1,6 @@
 import threading
 from datetime import date
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -286,3 +287,20 @@ def test_health_reports_version_and_a_boot_id(client):
     assert health["version"] == "0.2.0" and len(health["boot"]) == 32
     client.post("/actions/digest")
     assert f'data-boot="{health["boot"]}"' in client.get("/").text
+
+
+def test_dashboard_shows_whats_new(client):
+    page = client.get("/").text
+    assert "What's new" in page and "jobhunt 0.2.0" in page
+    assert "Update banner." in page and "Browser UI." in page
+    assert "development checkout" not in page
+
+
+def test_dashboard_folds_older_entries_and_notes_a_development_checkout(ws):
+    entries = [Entry(f"0.{n}.0", "2026-09-20", [f"note {n}"]) for n in range(7, 0, -1)]
+    u = updater(ws, install=EngineInstall(editable=True, path=Path("/src/jobhunt")))
+    u.changelog = entries
+    page = web(ws, u).get("/").text
+    assert "note 7" in page and "note 3" in page
+    assert page.index("<summary>") < page.index("note 2")
+    assert "development checkout" in page and "/src/jobhunt" in page
