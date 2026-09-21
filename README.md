@@ -29,9 +29,7 @@ one of them — uv fetches 3.12+ when the workspace needs it.
    ```
 
 3. **git** — usually already there (`git --version`). uv installs the engine from GitHub with
-   it, and the browser UI's update check runs `git ls-remote`. While this repo is private your
-   GitHub account needs access and git needs to authenticate non-interactively (an SSH key, or a
-   credential helper).
+   it, and the browser UI's update check runs `git ls-remote`.
 
 Optional: `pdftotext` (poppler) if you want `scripts/extract-cv.sh` to make `docs/cv.md` from a
 PDF; otherwise write `docs/cv.md` by hand.
@@ -39,7 +37,7 @@ PDF; otherwise write `docs/cv.md` by hand.
 ## Quickstart
 
 ```bash
-uvx --from git+https://github.com/jessefontaine/jobhunt jobhunt init ~/jobhunt
+uvx git+https://github.com/jessefontaine/jobhunt init ~/jobhunt
 cd ~/jobhunt
 # 1. edit profile/profile.md (what you want, what you can do, what rules a role out)
 # 2. put your CV PDF in docs/ and run scripts/extract-cv.sh  (or write docs/cv.md by hand)
@@ -172,3 +170,7 @@ with a test client). Its `templates/` are web pages — `src/jobhunt/templates/`
 workspace scaffolding files, a different thing.
 
 Design notes: `docs/superpowers/specs/`.
+
+## License
+
+[MIT](LICENSE).

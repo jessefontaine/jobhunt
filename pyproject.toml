@@ -1,8 +1,10 @@
 [project]
 name = "jobhunt"
-version = "0.3.2"
+version = "0.3.3"
 description = "Job-hunt pipeline: fetch Dutch research/PhD listings, score them against your profile with Claude, learn from your ratings."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Jesse Fontaine", email = "jesse.fontaine98@gmail.com" }
 ]
