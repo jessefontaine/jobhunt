@@ -289,11 +289,15 @@ def test_health_reports_version_and_a_boot_id(client):
     assert f'data-boot="{health["boot"]}"' in client.get("/").text
 
 
-def test_dashboard_shows_whats_new(client):
+def test_dashboard_shows_whats_new_folded(client):
     page = client.get("/").text
     assert "What's new" in page and "jobhunt 0.2.0" in page
     assert "Update banner." in page and "Browser UI." in page
     assert "development checkout" not in page
+    # the whole section is a closed <details>; only its heading shows until clicked
+    assert '<details class="changelog">' in page
+    assert page.index('<details class="changelog">') < page.index("What's new")
+    assert page.index("What's new") < page.index("</summary>") < page.index("Update banner.")
 
 
 def test_dashboard_folds_older_entries_and_notes_a_development_checkout(ws):
@@ -302,7 +306,7 @@ def test_dashboard_folds_older_entries_and_notes_a_development_checkout(ws):
     u.changelog = entries
     page = web(ws, u).get("/").text
     assert "note 7" in page and "note 3" in page
-    assert page.index("<summary>") < page.index("note 2")
+    assert page.index("<summary>older versions</summary>") < page.index("note 2")
     assert "development checkout" in page and "/src/jobhunt" in page
 
 

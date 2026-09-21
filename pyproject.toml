@@ -1,6 +1,6 @@
 [project]
 name = "jobhunt"
-version = "0.3.3"
+version = "0.3.4"
 description = "Job-hunt pipeline: fetch Dutch research/PhD listings, score them against your profile with Claude, learn from your ratings."
 readme = "README.md"
 license = "MIT"

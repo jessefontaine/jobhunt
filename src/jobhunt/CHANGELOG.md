@@ -4,6 +4,9 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.3.4 — 2026-09-21
+- Dashboard: the What's new changelog is collapsed by default; click the heading to open it.
+
 ## 0.3.3 — 2026-09-21
 - Public release: MIT license; the install command no longer needs `--from`
   (`uvx git+https://github.com/jessefontaine/jobhunt init DIR`).
