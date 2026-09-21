@@ -156,3 +156,49 @@ def test_rating_validation(client, ws):
     lid = listing_id(ws, "PhD vision")
     assert client.post("/ratings", data={"listing_id": lid, "rating": "9"}).status_code == 422
     assert client.post("/ratings", data={"listing_id": lid}).status_code == 422
+
+
+def test_profile_editor_round_trips(client, ws):
+    assert "PROFILE" in client.get("/files/profile").text
+    r = client.post("/files/profile", data={"text": "new\r\nprofile"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/files/profile?saved=1"
+    assert ws.paths.profile.read_text() == "new\nprofile\n"
+    page = client.get("/files/profile?saved=1").text
+    assert "rescore" in page and "new\nprofile" in page
+
+
+def test_missing_file_shows_an_empty_editor(client, ws):
+    r = client.get("/files/cv")
+    assert r.status_code == 200 and "<textarea" in r.text
+    client.post("/files/cv", data={"text": "# CV"})
+    assert ws.paths.cv.read_text() == "# CV\n"
+
+
+def test_sources_editor_rejects_invalid_yaml_and_keeps_the_file(client, ws):
+    before = ws.paths.sources_yaml.read_text()
+    r = client.post("/files/sources", data={"text": "sources: [\n"})
+    assert r.status_code == 400 and "not saved: invalid YAML" in r.text
+    assert "sources: [" in r.text  # the unsaved text is still in the editor
+    assert ws.paths.sources_yaml.read_text() == before
+    r = client.post("/files/sources", data={"text": "scoring: {batch_size: x}\n"})
+    assert r.status_code == 400
+
+
+def test_sources_editor_save_reloads_config(client, ws):
+    page = client.get("/files/sources").text
+    assert "<td>fixture</td><td>disabled</td>" in page
+    r = client.post(
+        "/files/sources",
+        data={"text": "sources:\n  fixture:\n    enabled: true\n"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert ws.config.enabled_sources() == ["fixture"]
+    page = client.get("/files/sources?saved=1").text
+    assert "<td>fixture</td><td>enabled</td>" in page and "Saved." in page
+    assert '<option value="fixture">' in client.get("/").text
+
+
+def test_unknown_file_is_404(client):
+    assert client.get("/files/etc-passwd").status_code == 404
+    assert client.post("/files/etc-passwd", data={"text": "x"}).status_code == 404

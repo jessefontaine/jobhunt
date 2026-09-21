@@ -7,21 +7,27 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from jobhunt import pipeline
+from jobhunt.config import ConfigError, parse_config
 from jobhunt.digest import newest_digest
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import learned_at, record_rating
+from jobhunt.sources import list_sources
 from jobhunt.web.jobs import JobBusy, JobRunner, Progress
 from jobhunt.workspace import Workspace
 
 HERE = Path(__file__).parent
 
 RATING_LABELS = {5: "apply", 4: "strong", 3: "maybe", 2: "not really", 1: "irrelevant"}
+RESCORE_HINT = (
+    "Saved. Existing scores were computed with the old text — run Check with "
+    "“rescore everything open” on the dashboard to refresh them."
+)
 
 
 def _item(lst: Listing, score: Score | None, rating: Rating | None, today: date) -> dict:
@@ -35,10 +41,10 @@ def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=HERE / "templates")
     jobs = jobs or JobRunner()
 
-    def render(request: Request, name: str, status_code: int = 200, **context):
+    def render(request: Request, template: str, status_code: int = 200, **context):
         context.setdefault("error", None)
         context.setdefault("notice", None)
-        return templates.TemplateResponse(request, name, context, status_code=status_code)
+        return templates.TemplateResponse(request, template, context, status_code=status_code)
 
     def stats() -> dict:
         store = ws.store
@@ -188,5 +194,60 @@ def create_app(ws: Workspace, jobs: JobRunner | None = None) -> FastAPI:
             "changed": saved is not None,
             "since_learned": store.ratings_since(learned_at(store)),
         }
+
+    # -- file editors: only these four workspace files, nothing else ----------
+
+    files = {
+        "profile": ws.paths.profile,
+        "preferences": ws.paths.preferences,
+        "cv": ws.paths.cv,
+        "sources": ws.paths.sources_yaml,
+    }
+
+    def file_path(name: str) -> Path:
+        try:
+            return files[name]
+        except KeyError:
+            raise HTTPException(404, "no such file") from None
+
+    def source_table() -> list[tuple[str, bool]]:
+        enabled = set(ws.config.enabled_sources())
+        return [(name, name in enabled) for name in list_sources()]
+
+    def editor(request: Request, name: str, text: str, status_code: int = 200, **flash):
+        return render(
+            request,
+            "editor.html",
+            status_code=status_code,
+            name=name,
+            path=file_path(name).relative_to(ws.paths.root),
+            text=text,
+            sources=source_table() if name == "sources" else None,
+            **flash,
+        )
+
+    @app.get("/files/{name}", response_class=HTMLResponse)
+    def edit_file(request: Request, name: str, saved: bool = False):
+        path = file_path(name)
+        text = path.read_text() if path.exists() else ""
+        notice = None
+        if saved:
+            notice = "Saved." if name == "sources" else RESCORE_HINT
+        return editor(request, name, text, notice=notice)
+
+    @app.post("/files/{name}")
+    def save_file(request: Request, name: str, text: str = Form("")):
+        path = file_path(name)
+        text = text.replace("\r\n", "\n")
+        if not text.endswith("\n"):
+            text += "\n"
+        if name == "sources":
+            try:
+                ws.config = parse_config(text)
+            except ConfigError as exc:
+                return editor(request, name, text, status_code=400, error=f"not saved: {exc}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        return RedirectResponse(f"/files/{name}?saved=1", status_code=303)
 
     return app

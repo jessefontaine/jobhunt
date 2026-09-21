@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ name|capitalize }} · jobhunt{% endblock %}
+{% block content %}
+<h1>{{ name|capitalize }} <small class="muted"><code>{{ path }}</code></small></h1>
+{% if sources %}
+<table class="sources">
+  <tr><th>source</th><th>status</th></tr>
+  {% for s, on in sources %}<tr><td>{{ s }}</td><td>{{ "enabled" if on else "disabled" }}</td></tr>{% endfor %}
+</table>
+<p class="muted">Enable a source with <code>enabled: true</code> under <code>sources:</code> below;
+   the engine README documents each source's settings.</p>
+{% elif name == "preferences" %}
+<p class="muted"><code>## Manual</code> is yours to edit; <code>## Learned</code> is rewritten by
+   <em>Regenerate preferences</em> on the dashboard.</p>
+{% elif name == "profile" %}
+<p class="muted">Who you are and what you want — the scorer reads this verbatim.</p>
+{% elif name == "cv" %}
+<p class="muted">Plain-text CV read by the scorer (<code>scripts/extract-cv.sh</code> makes it from a PDF).</p>
+{% endif %}
+<form method="post" action="/files/{{ name }}" class="editor">
+  <textarea name="text" rows="30" spellcheck="false">{{ text }}</textarea>
+  <p><button type="submit">Save</button></p>
+</form>
+{% endblock %}

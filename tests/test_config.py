@@ -1,6 +1,8 @@
 import textwrap
 
-from jobhunt.config import Config, Paths, find_root, load_config
+import pytest
+
+from jobhunt.config import Config, ConfigError, Paths, find_root, load_config, parse_config
 
 
 def test_paths_are_relative_to_root(tmp_path):
@@ -73,3 +75,21 @@ def test_find_root_finds_nearest_dir_with_sources_yaml(tmp_path):
 def test_find_root_returns_none_outside_a_workspace(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")  # not enough any more
     assert find_root(tmp_path) is None
+
+
+def test_parse_config_accepts_empty_text():
+    assert parse_config("").enabled_sources() == []
+
+
+@pytest.mark.parametrize(
+    "text, fragment",
+    [
+        ("sources: [\n", "invalid YAML"),
+        ("- just\n- a list\n", "must be a YAML mapping"),
+        ("sources: [a, b]\n", "sources: must be a mapping"),
+        ("scoring: {batch_size: x}\n", "invalid scoring/digest settings"),
+    ],
+)
+def test_parse_config_rejects_unusable_text(text, fragment):
+    with pytest.raises(ConfigError, match=fragment):
+        parse_config(text)

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 @dataclass(frozen=True)
@@ -81,15 +81,37 @@ def find_root(start: Path | None = None) -> Path | None:
     return None
 
 
+class ConfigError(ValueError):
+    """config/sources.yaml cannot be used as written."""
+
+
+def parse_config(text: str) -> Config:
+    """Build a Config from the text of sources.yaml; raise ConfigError if it is unusable."""
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"invalid YAML: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError("the file must be a YAML mapping (contact:, scoring:, digest:, sources:)")
+    sources = data.get("sources") or {}
+    if not isinstance(sources, dict):
+        raise ConfigError("sources: must be a mapping of source name to its settings")
+    try:
+        scoring = ScoringConfig(**(data.get("scoring") or {}))
+        digest = DigestConfig(**(data.get("digest") or {}))
+    except (ValidationError, TypeError) as exc:
+        raise ConfigError(f"invalid scoring/digest settings: {exc}") from exc
+    contact = data.get("contact")
+    return Config(
+        scoring=scoring,
+        digest=digest,
+        sources=sources,
+        contact=str(contact).strip() if contact else None,
+    )
+
+
 def load_config(root: Path) -> Config:
     paths = Paths(root)
     if not paths.sources_yaml.exists():
         return Config()
-    data = yaml.safe_load(paths.sources_yaml.read_text()) or {}
-    contact = data.get("contact")
-    return Config(
-        scoring=ScoringConfig(**(data.get("scoring") or {})),
-        digest=DigestConfig(**(data.get("digest") or {})),
-        sources=data.get("sources") or {},
-        contact=str(contact).strip() if contact else None,
-    )
+    return parse_config(paths.sources_yaml.read_text())
