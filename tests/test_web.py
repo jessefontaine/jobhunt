@@ -304,3 +304,12 @@ def test_dashboard_folds_older_entries_and_notes_a_development_checkout(ws):
     assert "note 7" in page and "note 3" in page
     assert page.index("<summary>") < page.index("note 2")
     assert "development checkout" in page and "/src/jobhunt" in page
+
+
+def test_dashboard_links_to_prefilled_issue_forms(client):
+    page = client.get("/").text
+    assert "https://github.com/jessefontaine/jobhunt/issues/new?template=bug_report.yml" in page
+    assert (
+        "https://github.com/jessefontaine/jobhunt/issues/new?template=feature_request.yml" in page
+    )
+    assert "environment=jobhunt+0.2.0+%28aaaaaaa%29" in page

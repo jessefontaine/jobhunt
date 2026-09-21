@@ -4,6 +4,10 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.3.0 — 2026-09-21
+- Dashboard: "Report a bug" and "Suggest a feature" links open a prefilled issue form on
+  GitHub. The repo has matching issue templates.
+
 ## 0.2.0 — 2026-09-20
 - The UI shows a banner when a newer engine is on GitHub and can update and restart itself.
 - The dashboard shows this changelog.

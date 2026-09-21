@@ -1,0 +1,20 @@
+name: Feature request
+description: Something you'd like the engine to do — a source, a UI change, a pipeline tweak.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you'd like
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why — what would it help with
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Filled in for you when you come from the dashboard. Otherwise, the `jobhunt` version from "What's new", Python version and OS.
+      render: text
