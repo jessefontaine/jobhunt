@@ -4,6 +4,9 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.3.1 — 2026-09-21
+- README: a Setup section that walks through installing uv, Claude Code and git.
+
 ## 0.3.0 — 2026-09-21
 - Dashboard: "Report a bug" and "Suggest a feature" links open a prefilled issue form on
   GitHub. The repo has matching issue templates.
