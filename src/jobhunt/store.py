@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS ratings (
     digest TEXT NOT NULL,
     rated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -334,3 +338,23 @@ class Store:
             digest=row["r_digest"],
             rated_at=datetime.fromisoformat(row["r_rated_at"]),
         )
+
+    # -- meta ---------------------------------------------------------------
+
+    def get_meta(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value)
+            )
+
+    def ratings_since(self, when: datetime | None) -> int:
+        """Ratings recorded after `when` (every rating when `when` is None)."""
+        if when is None:
+            return self.conn.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM ratings WHERE rated_at > ?", (when.isoformat(),)
+        ).fetchone()[0]

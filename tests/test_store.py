@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -124,3 +124,21 @@ def test_rated_examples_returns_strong_ratings_most_recent_first(store):
     assert [r.listing_id for _, r in examples] == [listing(4).id, listing(3).id, listing(1).id]
     assert examples[0][0].title == "Job 4"
     assert len(store.rated_examples(limit=2)) == 2
+
+
+def test_meta_roundtrip(store):
+    assert store.get_meta("learned_at") is None
+    store.set_meta("learned_at", "2026-09-20T10:00:00")
+    assert store.get_meta("learned_at") == "2026-09-20T10:00:00"
+    store.set_meta("learned_at", "2026-09-21T10:00:00")
+    assert store.get_meta("learned_at") == "2026-09-21T10:00:00"
+
+
+def test_ratings_since_counts_only_newer_ratings(store):
+    store.upsert_listings([listing(1), listing(2), listing(3)])
+    t0 = datetime(2026, 9, 20, 10, 0)
+    store.save_rating(Rating(listing_id=listing(1).id, rating=5, rated_at=t0 - timedelta(hours=1)))
+    store.save_rating(Rating(listing_id=listing(2).id, rating=4, rated_at=t0 + timedelta(hours=1)))
+    store.save_rating(Rating(listing_id=listing(3).id, rating=1, rated_at=t0 + timedelta(hours=2)))
+    assert store.ratings_since(None) == 3
+    assert store.ratings_since(t0) == 2
