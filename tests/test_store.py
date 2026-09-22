@@ -158,3 +158,11 @@ def test_ratings_since_counts_only_newer_ratings(store):
     store.save_rating(Rating(listing_id=listing(3).id, rating=1, rated_at=t0 + timedelta(hours=2)))
     assert store.ratings_since(None) == 3
     assert store.ratings_since(t0) == 2
+
+
+def test_find_by_url_matches_cosmetic_variants(store):
+    store.upsert_listings([listing(1)])
+    assert store.find_by_url("https://x.org/j/1").id == listing(1).id
+    assert store.find_by_url("https://x.org/j/1/").id == listing(1).id
+    assert store.find_by_url("https://x.org/j/1#apply").id == listing(1).id
+    assert store.find_by_url("https://x.org/j/9") is None

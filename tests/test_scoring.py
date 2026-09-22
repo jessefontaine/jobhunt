@@ -340,3 +340,20 @@ def test_prompt_describes_the_person_only_via_the_profile():
     assert "Respect the career level and constraints stated in the profile" in prompt
     for personal in ("Master's student", "MSc", "cognitive neuroscience"):
         assert personal not in prompt
+
+
+def test_score_listings_can_score_one_given_listing(env):
+    paths, store = env
+    one, other = L(1), L(2)
+    store.upsert_listings([one, other])
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([one], 77)(prompt, model, schema)
+
+    result = score_listings(store, paths, ScoringConfig(), runner, TODAY, listings=[one])
+    assert result.scored == 1
+    assert other.id not in prompts[0]
+    assert store.get_score(one.id).score == 77
+    assert store.get_score(other.id) is None

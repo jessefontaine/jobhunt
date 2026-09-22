@@ -7,7 +7,7 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
-from jobhunt.models import Listing, Rating, Score
+from jobhunt.models import Listing, Rating, Score, canonical_url
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -121,6 +121,14 @@ class Store:
     def get_listing(self, listing_id: str) -> Listing | None:
         row = self.conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
         return self._row_to_listing(row) if row else None
+
+    def find_by_url(self, url: str) -> Listing | None:
+        """The listing at `url`, ignoring a trailing slash or a fragment (any source)."""
+        target = canonical_url(url)
+        for row in self.conn.execute("SELECT * FROM listings"):
+            if canonical_url(row["url"]) == target:
+                return self._row_to_listing(row)
+        return None
 
     def get_listings(self, ids: list[str]) -> list[Listing]:
         if not ids:

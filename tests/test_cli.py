@@ -304,3 +304,48 @@ def test_rescore_leaves_rated_listings_alone_unless_asked(scored_root):
     run(root, "rate", "--no-learn")
     assert "scored: 1" in run(root, "score", "--rescore").output
     assert "scored: 2" in run(root, "score", "--rescore", "--include-rated").output
+
+
+def test_add_stores_a_link_given_by_hand(scored_root):
+    result = run(
+        scored_root,
+        "add",
+        "https://example.org/j/1",
+        "--title",
+        "PhD vision",
+        "--employer",
+        "Donders",
+        "--no-score",
+    )
+    assert result.exit_code == 0, result.output
+    assert "added: PhD vision — Donders" in result.output
+    assert "score" not in result.output
+
+
+def test_add_scores_the_listing_it_stored(scored_root):
+    result = run(
+        scored_root, "add", "https://example.org/j/1", "--title", "PhD vision", "--employer", "D"
+    )
+    assert result.exit_code == 0, result.output
+    assert "score 90" in result.output
+
+
+def test_add_without_a_title_and_an_unreachable_page_explains_itself(scored_root):
+    result = run(scored_root, "add", "https://127.0.0.1:9/nothing")
+    assert result.exit_code == 1
+    assert "could not reach" in result.output
+
+
+def test_show_prints_a_listing_and_its_score(scored_root):
+    root = scored_root
+    run(root, "check", "--fixture", str(root / "listings.json"))
+    result = run(root, "show", "https://x.org/1")
+    assert result.exit_code == 0, result.output
+    assert "PhD vision — Donders" in result.output
+    assert "(phd) — why" in result.output
+
+
+def test_show_reports_an_unknown_link(scored_root):
+    result = run(scored_root, "show", "https://x.org/nope")
+    assert result.exit_code == 1
+    assert "not in the store" in result.output

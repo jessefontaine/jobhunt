@@ -207,6 +207,7 @@ def score_listings(
     dry_run: bool = False,
     rescore: bool = False,
     include_rated: bool = False,
+    listings: list[Listing] | None = None,
     progress: Progress = lambda msg: None,
 ) -> ScoreRunResult:
     """Score every unscored, unexpired listing in batches. One retry per batch.
@@ -219,11 +220,12 @@ def score_listings(
     a hang).
     """
     result = ScoreRunResult()
-    pending = (
-        store.unexpired_listings(today, include_rated=include_rated)
-        if rescore
-        else store.unscored_listings(today)
-    )
+    if listings is not None:
+        pending = listings  # exactly these, e.g. the one listing `jobhunt add` just stored
+    elif rescore:
+        pending = store.unexpired_listings(today, include_rated=include_rated)
+    else:
+        pending = store.unscored_listings(today)
     if not pending:
         return result
     profile = paths.profile.read_text() if paths.profile.exists() else ""

@@ -172,6 +172,73 @@ def rate(
 
 
 @app.command()
+def add(
+    ctx: typer.Context,
+    url: str = typer.Argument(..., help="Link to a vacancy page"),
+    title: str = typer.Option("", help="Skip fetching and use this title"),
+    employer: str = typer.Option("", help="Employer (default: the site name or domain)"),
+    description: str = typer.Option("", help="Description text, when the page cannot be read"),
+    no_score: bool = typer.Option(False, "--no-score", help="Store it without scoring it"),
+) -> None:
+    """Add a listing from a link, so it is scored and ranked like the fetched ones."""
+    from jobhunt.sources.manual import ManualFetchError
+
+    ws = _workspace(ctx)
+    try:
+        listing, score = ws.add(
+            url,
+            title=title,
+            employer=employer,
+            description=description,
+            score=not no_score,
+            progress=typer.echo,
+        )
+    except ManualFetchError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    if score is not None:
+        typer.echo(f"score {score.score} ({score.role_type}) — {score.why}")
+
+
+def _show_listing(listing, score, rating) -> str:
+    lines = [f"{listing.title} — {listing.employer}", listing.url]
+    meta = [f"source {listing.source}", f"id {listing.id}"]
+    if listing.location:
+        meta.append(listing.location)
+    if listing.deadline:
+        meta.append(f"deadline {listing.deadline.isoformat()}")
+    lines.append(" · ".join(meta))
+    if score is not None:
+        lines.append(f"score {score.score} ({score.role_type}) — {score.why}")
+        if score.concerns:
+            lines.append(f"concerns: {score.concerns}")
+    else:
+        lines.append("not scored yet")
+    if rating is not None:
+        note = f" — {rating.note}" if rating.note else ""
+        lines.append(f"rated {rating.rating}/5{note}")
+    body = listing.description or listing.summary
+    if body:
+        lines += ["", body[:1000]]
+    return "\n".join(lines)
+
+
+@app.command()
+def show(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+) -> None:
+    """Print what the store knows about one listing: its score, why, and your rating."""
+    ws = _workspace(ctx)
+    store = ws.store
+    found = store.get_listing(listing) or store.find_by_url(listing)
+    if found is None:
+        typer.echo(f"{listing} is not in the store (add it with: jobhunt add URL)", err=True)
+        raise typer.Exit(1)
+    typer.echo(_show_listing(found, store.get_score(found.id), store.get_rating(found.id)))
+
+
+@app.command()
 def learn(ctx: typer.Context) -> None:
     """Regenerate the learned preferences from every rating (one Claude call)."""
     if not _workspace(ctx).learn(progress=typer.echo):

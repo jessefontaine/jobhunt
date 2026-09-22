@@ -10,6 +10,7 @@ from pathlib import Path
 from jobhunt import pipeline
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
+from jobhunt.models import Listing, Score
 from jobhunt.ratings import regenerate_preferences
 from jobhunt.scoring import Runner, ScoreRunResult, claude_runner, score_listings
 from jobhunt.settings import Settings, load_settings
@@ -119,6 +120,59 @@ class Workspace:
         if not no_score:
             self.score(rescore=rescore, include_rated=include_rated, progress=progress)
         return self.digest(info, progress)
+
+    def add(
+        self,
+        url: str,
+        *,
+        title: str = "",
+        employer: str = "",
+        description: str = "",
+        score: bool = True,
+        http=None,
+        progress: Progress = _silent,
+    ) -> tuple[Listing, Score | None]:
+        """Store the listing behind a link the user pasted, and score it (one Claude call).
+
+        With `title` (and optionally `employer`/`description`) the page is never fetched —
+        that is the way in for a site that blocks scrapers.
+        """
+        from jobhunt.sources.http import PoliteClient
+        from jobhunt.sources.manual import fetch_listing, manual_listing
+
+        store = self.store
+        known = store.find_by_url(url)
+        if title or description:
+            listing = manual_listing(url, title, employer, description)
+        elif http is not None:
+            listing = fetch_listing(url, http)
+        else:
+            progress(f"fetching {url}…")
+            with PoliteClient(contact=self.config.contact) as client:
+                listing = fetch_listing(url, client)
+        if known is not None:
+            listing.id = known.id  # keep the id it was scored and rated under
+        store.upsert_listings([listing])
+        existing = store.get_score(listing.id)
+        if known is not None:
+            rating = store.get_rating(listing.id)
+            rated = f", rated {rating.rating}/5" if rating else ""
+            progress(f"already in the store as {known.source}: {known.title}{rated}")
+        progress(f"added: {listing.title} — {listing.employer}")
+        if not score or existing is not None:
+            return listing, existing
+        result = score_listings(
+            self.store,
+            self.paths,
+            self.settings.scoring,
+            self.runner,
+            date.today(),
+            listings=[listing],
+            progress=progress,
+        )
+        for err in result.errors:
+            progress(f"  ! scoring: {err}")
+        return listing, self.store.get_score(listing.id)
 
     def shortlist(self) -> str:
         """Rewrite shortlist.md; return its text."""
