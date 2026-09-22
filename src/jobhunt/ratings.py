@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from jobhunt.config import Paths
 from jobhunt.models import Rating
@@ -121,7 +121,10 @@ def learned_at(store: Store) -> datetime | None:
 
 MANUAL_HEADING = "## Manual"
 LEARNED_HEADING = "## Learned"
+SPECIFICS_HEADING = "## Specifics"
 SECTION_RE = re.compile(r"^##[ \t]+(.+?)[ \t]*$", re.M)
+PLACEHOLDER = "(none yet)"
+PLACEHOLDER_RE = re.compile(r"^-?\s*\(none yet.*\)$")  # the empty-section marker, not a rule
 
 PREFERENCES_INSTRUCTIONS = """\
 Below are job listings the person described in the profile has rated from 5 (apply)
@@ -132,16 +135,24 @@ The person's own rules are context only. Never restate, weaken or contradict the
 not write a rule that covers the same ground — they always win. If the ratings seem to
 disagree with one of them, leave it alone.
 
-Write at most 12 concise bullet rules describing what this person consistently rates HIGH
-and what they rate LOW. Be specific (name research areas, methods, role types, employers,
-constraints) — the rules are read by a scorer that ranks new listings. Keep prior rules that
-the ratings still support; drop or rewrite ones the ratings contradict. Prefer fewer, sharper
-rules over many vague ones. Return ONLY JSON: {"rules": ["...", "..."]}.
+Return two lists of bullet rules, both read by a scorer that ranks new listings:
+
+- "rules": at most 10 general patterns — what this person consistently rates HIGH and what
+  they rate LOW, named concretely (research areas, methods, role types, employers,
+  constraints). These should hold for listings you have not seen.
+- "specifics": at most 8 narrow observations that are too particular to be general rules —
+  one employer, one method, one recurring caveat, an exception to a pattern above. Name the
+  example they come from. Leave the list empty rather than padding it.
+
+Keep prior rules and specifics that the ratings still support; drop or rewrite ones the
+ratings contradict. Prefer fewer, sharper rules over many vague ones.
+Return ONLY JSON: {"rules": ["...", "..."], "specifics": ["...", "..."]}.
 """
 
 
 class RuleSet(BaseModel):
     rules: list[str]
+    specifics: list[str] = Field(default_factory=list)
 
 
 RULE_SCHEMA = RuleSet.model_json_schema()
@@ -153,7 +164,8 @@ class Preferences:
 
     head: str = ""
     manual: str = ""  # the user's own rules — never rewritten
-    learned: str = ""  # regenerated from the ratings
+    learned: str = ""  # general patterns, regenerated from the ratings
+    specifics: str = ""  # narrow one-off inferences, regenerated from the ratings
     extra: str = ""  # any other `## ` section, kept verbatim
 
 
@@ -163,13 +175,14 @@ def split_preferences(text: str) -> Preferences:
     if not matches:
         return Preferences(head=text)
     prefs = Preferences(head=text[: matches[0].start()])
-    owned = {"manual": "manual", "learned": "learned"}
+    owned = {"manual": "manual", "learned": "learned", "specifics": "specifics"}
     extras: list[str] = []
     for n, m in enumerate(matches):
         end = matches[n + 1].start() if n + 1 < len(matches) else len(text)
         field_name = owned.pop(m.group(1).strip().lower(), None)
         if field_name:
-            setattr(prefs, field_name, text[m.end() : end].strip("\n"))
+            body = text[m.end() : end].strip("\n")
+            setattr(prefs, field_name, "" if PLACEHOLDER_RE.match(body.strip()) else body)
         else:
             extras.append(text[m.start() : end].strip("\n"))
     prefs.extra = "\n\n".join(extras)
@@ -180,8 +193,9 @@ def render_preferences(prefs: Preferences) -> str:
     """The inverse of `split_preferences`: manual and extra go back exactly as they came in."""
     parts = [
         prefs.head.rstrip("\n"),
-        f"{MANUAL_HEADING}\n\n{prefs.manual or '- (none yet)'}",
-        f"{LEARNED_HEADING}\n\n{prefs.learned or '(none yet)'}",
+        f"{MANUAL_HEADING}\n\n{prefs.manual or '- ' + PLACEHOLDER}",
+        f"{LEARNED_HEADING}\n\n{prefs.learned or PLACEHOLDER}",
+        f"{SPECIFICS_HEADING}\n\n{prefs.specifics or PLACEHOLDER}",
         prefs.extra,
     ]
     return "\n\n".join(p for p in parts if p) + "\n"
@@ -197,14 +211,21 @@ def _preferences_prompt(prefs: Preferences, store: Store) -> str:
             "# Previously learned rules",
             prefs.learned or "(none)",
             "",
+            "# Previously learned specifics",
+            prefs.specifics or "(none)",
+            "",
             "# Rated listings (most recent first)",
             format_rated(store.all_ratings()),
         ]
     )
 
 
+def _bullets(rules: list[str]) -> str:
+    return "\n".join(f"- {r.strip()}" for r in rules if r.strip())
+
+
 def regenerate_preferences(paths: Paths, store: Store, runner: Runner, model: str) -> bool:
-    """Rewrite the `## Learned` section from all ratings, leaving every other section alone.
+    """Rewrite `## Learned` and `## Specifics` from all ratings, leaving other sections alone.
 
     Returns False and leaves the file untouched if Claude's output is unusable.
     """
@@ -212,10 +233,11 @@ def regenerate_preferences(paths: Paths, store: Store, runner: Runner, model: st
     prefs = split_preferences(pref_path.read_text() if pref_path.exists() else "# Preferences\n")
     try:
         payload = _extract_payload(runner(_preferences_prompt(prefs, store), model, RULE_SCHEMA))
-        rules = RuleSet.model_validate(payload).rules
+        ruleset = RuleSet.model_validate(payload)
     except (ValueError, ValidationError, RuntimeError):
         return False
-    prefs.learned = "\n".join(f"- {r.strip()}" for r in rules if r.strip())
+    prefs.learned = _bullets(ruleset.rules)
+    prefs.specifics = _bullets(ruleset.specifics)
     pref_path.write_text(render_preferences(prefs))
     store.set_meta(LEARNED_AT, datetime.now().isoformat())
     return True

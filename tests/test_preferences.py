@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import pytest
 
@@ -180,3 +181,64 @@ def test_preferences_prompt_shows_manual_rules_as_fixed_context(env):
     assert "- I hate wet lab" in seen["prompt"]
     lower = seen["prompt"].lower()
     assert "contradict" in lower and "own rules" in lower
+
+
+def _output(**kw):
+    return json.dumps({"type": "result", "structured_output": kw})
+
+
+def test_split_preferences_reads_the_specifics_section():
+    prefs = split_preferences(PREFS + "\n## Specifics\n\n- only at Donders\n")
+    assert prefs.specifics == "- only at Donders"
+    assert prefs.extra == ""
+
+
+def test_regenerate_preferences_writes_general_rules_and_specifics(env):
+    paths, store = env
+    runner = lambda *a: _output(rules=["general"], specifics=["narrow, e.g. Donders"])  # noqa: E731
+    assert regenerate_preferences(paths, store, runner, "m")
+    prefs = split_preferences(paths.preferences.read_text())
+    assert prefs.learned == "- general"
+    assert prefs.specifics == "- narrow, e.g. Donders"
+    text = paths.preferences.read_text()
+    assert text.index("## Learned") < text.index("## Specifics")
+
+
+def test_regenerate_preferences_accepts_output_without_specifics(env):
+    paths, store = env
+    assert regenerate_preferences(paths, store, lambda *a: _output(rules=["r"]), "m")
+    assert split_preferences(paths.preferences.read_text()).specifics == ""
+
+
+def test_preferences_prompt_offers_prior_specifics_for_keep_or_drop(env):
+    paths, store = env
+    paths.preferences.write_text(PREFS + "\n## Specifics\n\n- old specific\n")
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"], seen["schema"] = prompt, schema
+        return _output(rules=["r"], specifics=["s"])
+
+    regenerate_preferences(paths, store, runner, "m")
+    assert "old specific" in seen["prompt"]
+    assert "specifics" in json.dumps(seen["schema"])
+
+
+def test_split_preferences_does_not_mistake_the_empty_marker_for_a_rule():
+    prefs = split_preferences(
+        "# Preferences\n\n## Manual\n\n- (none yet)\n\n"
+        "## Learned\n\n(none yet — regenerated from your ratings by `jobhunt rate`)\n"
+    )
+    assert prefs.manual == "" and prefs.learned == ""
+
+
+def test_the_scaffolded_preferences_file_survives_a_regeneration():
+    from jobhunt.ratings import render_preferences
+
+    template = (
+        pathlib.Path(__file__).parents[1]
+        / "src/jobhunt/templates/profile/preferences.md.tmpl"
+    ).read_text()
+    prefs = split_preferences(template)
+    assert prefs.manual == "" and prefs.learned == "" and prefs.specifics == ""
+    assert render_preferences(prefs) == template  # head and headings come back untouched
