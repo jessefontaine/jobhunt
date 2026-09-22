@@ -26,7 +26,19 @@ class RunInfo:
     total: int | None = None  # candidates before the digest limit was applied
 
 
-def _meta_line(lst: Listing, score: Score | None) -> str:
+def deadline_note(deadline: date | None, today: date | None, soon_days: int) -> str:
+    """` (today)` / ` (in 3 days)` for a deadline inside the window, else empty."""
+    if not soon_days or deadline is None or today is None:
+        return ""
+    days = (deadline - today).days
+    if days < 0 or days > soon_days:
+        return ""
+    return " (today)" if days == 0 else f" (in {days} day{'s' if days != 1 else ''})"
+
+
+def _meta_line(
+    lst: Listing, score: Score | None, today: date | None = None, soon_days: int = 0
+) -> str:
     parts: list[str] = []
     if score is not None:
         parts.append(f"score {score.score}")
@@ -36,16 +48,19 @@ def _meta_line(lst: Listing, score: Score | None) -> str:
     if lst.posted:
         parts.append(f"posted {lst.posted.isoformat()}")
     if lst.deadline:
-        parts.append(f"deadline {lst.deadline.isoformat()}")
+        note = deadline_note(lst.deadline, today, soon_days)
+        parts.append(f"deadline {lst.deadline.isoformat()}{note}")
     parts.append(f"[{lst.source}]({lst.url})")
     return " · ".join(parts)
 
 
-def _entry(heading: str, lst: Listing, score: Score | None) -> str:
+def _entry(
+    heading: str, lst: Listing, score: Score | None, today: date | None = None, soon_days: int = 0
+) -> str:
     lines = [
         f"## {heading}",
         f"<!-- id: {lst.id} -->",
-        _meta_line(lst, score),
+        _meta_line(lst, score, today, soon_days),
     ]
     if score is not None:
         lines.append(f"**Why:** {score.why}")
@@ -76,6 +91,7 @@ def render_digest(
     scores: dict[str, Score],
     info: RunInfo,
     shortlist: list[tuple[Listing, Rating]] = (),
+    soon_days: int = 0,
 ) -> str:
     scored = [lst for lst in listings if lst.id in scores]
     unscored = [lst for lst in listings if lst.id not in scores]
@@ -95,11 +111,13 @@ def render_digest(
     if shortlist:
         out += ["## Shortlist", render_shortlist(shortlist), ""]
     for i, lst in enumerate(scored, 1):
-        out.append(_entry(f"{i}. {lst.title} — {lst.employer}", lst, scores[lst.id]))
+        out.append(
+            _entry(f"{i}. {lst.title} — {lst.employer}", lst, scores[lst.id], today, soon_days)
+        )
     if unscored:
         out.append("## Unscored\n")
         for lst in unscored:
-            out.append(_entry(f"{lst.title} — {lst.employer}", lst, None))
+            out.append(_entry(f"{lst.title} — {lst.employer}", lst, None, today, soon_days))
     return "\n".join(out)
 
 

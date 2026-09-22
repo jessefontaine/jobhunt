@@ -3,12 +3,19 @@
   --accent: #2456c4; --accent-fg: #fff; --danger: #b3261e; --flash: #eef3ff; --pill: #f0f0f0;
   --warn: #ffd54a; --warn-fg: #3b2f00;
 }
+/* Dark twice on purpose: once for the system preference (unless the user forced light),
+   once for the forced dark theme. Settings > Display writes data-theme on <html>. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #131416; --fg: #e8e8e8; --muted: #9a9a9a; --border: #333; --card: #1c1d20;
     --accent: #6f9cff; --accent-fg: #0b1220; --danger: #ff7b72; --flash: #1c2540; --pill: #26282c;
     --warn: #6b5300; --warn-fg: #ffe58a;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #131416; --fg: #e8e8e8; --muted: #9a9a9a; --border: #333; --card: #1c1d20;
+  --accent: #6f9cff; --accent-fg: #0b1220; --danger: #ff7b72; --flash: #1c2540; --pill: #26282c;
+  --warn: #6b5300; --warn-fg: #ffe58a;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
@@ -16,7 +23,10 @@ body { margin: 0; background: var(--bg); color: var(--fg);
 a { color: var(--accent); }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
 .nav { display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap; padding: 0.6rem 1rem;
-       border-bottom: 1px solid var(--border); background: var(--card); }
+       border-bottom: 1px solid var(--border); background: var(--card);
+       position: sticky; top: 0; z-index: 10; }
+.nav .theme { margin-left: auto; }
+.nav .theme button { padding: 0.15rem 0.6rem; font-size: 0.85em; }
 .nav .brand { font-weight: 700; color: var(--fg); text-decoration: none; }
 .nav nav { display: flex; gap: 0.9rem; flex-wrap: wrap; }
 .nav nav a { color: var(--muted); text-decoration: none; }
@@ -92,3 +102,17 @@ table.sources td, table.sources th { border: 1px solid var(--border); padding: 0
 .changelog h3 { font-size: 1rem; margin: 0.7rem 0 0.1rem; }
 .changelog ul { margin: 0; }
 .changelog details summary { cursor: pointer; color: var(--muted); margin-top: 0.6rem; }
+
+.card .soon { color: var(--warn-fg); background: var(--warn); border-radius: 4px;
+              padding: 0 0.3rem; }
+.updates { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; margin: 0.2rem 0 0.8rem; }
+.updates .failed { color: var(--danger); }
+form.inline { display: inline; }
+.settings { display: flex; flex-direction: column; gap: 0.7rem; max-width: 46rem; }
+.settings h2 { margin: 1.2rem 0 0; }
+.settings > label { display: block; background: var(--card); border: 1px solid var(--border);
+                    border-radius: 8px; padding: 0.6rem 0.8rem; }
+.settings > label input, .settings > label select { margin: 0 0.2rem; }
+.settings > label input[type=number] { width: 5.5rem; }
+.settings > label input[type=text] { max-width: 16rem; }
+.settings .when { display: block; margin-top: 0.3rem; }

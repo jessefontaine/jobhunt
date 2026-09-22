@@ -147,3 +147,28 @@ def test_newest_digest_returns_none_when_empty(tmp_path):
     from jobhunt.digest import newest_digest
 
     assert newest_digest(tmp_path / "missing") is None
+
+
+def test_deadline_marks_a_listing_that_closes_soon():
+    lst = L(1, deadline=date(2026, 9, 20))
+    md = render_digest(date(2026, 9, 17), [lst], {}, RunInfo(), soon_days=14)
+    assert "deadline 2026-09-20 (in 3 days)" in md
+
+
+def test_deadline_today_says_today():
+    lst = L(1, deadline=date(2026, 9, 17))
+    md = render_digest(date(2026, 9, 17), [lst], {}, RunInfo(), soon_days=14)
+    assert "deadline 2026-09-17 (today)" in md
+
+
+def test_deadline_beyond_the_window_is_not_marked():
+    lst = L(1, deadline=date(2026, 12, 1))
+    md = render_digest(date(2026, 9, 17), [lst], {}, RunInfo(), soon_days=14)
+    assert "deadline 2026-12-01 ·" in md or md.rstrip().endswith("deadline 2026-12-01")
+    assert "(in " not in md
+
+
+def test_soon_days_zero_turns_the_marker_off():
+    lst = L(1, deadline=date(2026, 9, 18))
+    md = render_digest(date(2026, 9, 17), [lst], {}, RunInfo(), soon_days=0)
+    assert "(in 1 day" not in md

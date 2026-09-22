@@ -1,0 +1,34 @@
+# jobhunt settings. The Settings page in `jobhunt serve` writes this file; editing it by hand
+# is fine too (comments outside this header are not preserved on save).
+# sources.yaml says WHERE to look; this says how results are shown and how the pipeline behaves.
+
+display:
+  theme: auto              # auto (follow the system), light, dark
+  min_score: 0             # only show listings scoring at least this (0 = everything)
+  max_score: 100           # …and at most this
+  sort: score              # queue order: score, deadline, newest
+  deadline_soon_days: 14   # flag deadlines closing within this many days (0 = off)
+
+digest:
+  limit: 60                # entries per digest, best scores first
+
+scoring:
+  model: sonnet            # passed to `claude -p --model`
+  batch_size: 10           # listings per Claude call
+  examples: 20             # rated listings included as few-shot examples
+
+shortlist:
+  min_rating: 4            # ratings at or above this reach the shortlist
+
+rated:
+  hide_below: 3            # hide ratings under this…  (1 keeps everything)
+  hide_after_days: 30      # …once they are older than this. Both must be true.
+
+preferences:
+  max_rules: 10            # caps written into the preferences prompt so the rules stay
+  max_specifics: 8         # condensed instead of growing with every rating
+  max_words_per_rule: 20
+
+updates:
+  check: true              # look for a newer engine on GitHub
+  interval_minutes: 10

@@ -206,17 +206,26 @@ def score_listings(
     today: date,
     dry_run: bool = False,
     rescore: bool = False,
+    include_rated: bool = False,
+    listings: list[Listing] | None = None,
     progress: Progress = lambda msg: None,
 ) -> ScoreRunResult:
     """Score every unscored, unexpired listing in batches. One retry per batch.
 
-    With `rescore`, every unexpired listing is scored again and existing scores are replaced;
-    a batch that fails keeps its old scores. `progress` is called with a human-readable line
+    With `rescore`, every unexpired listing that has not been rated is scored again and
+    existing scores are replaced (`include_rated` re-scores the rated ones too, which is
+    normally a waste: they can no longer reach a digest). A batch that fails keeps its old
+    scores. `progress` is called with a human-readable line
     before/after each batch (each `claude -p` call takes tens of seconds, so silence looks like
     a hang).
     """
     result = ScoreRunResult()
-    pending = store.unexpired_listings(today) if rescore else store.unscored_listings(today)
+    if listings is not None:
+        pending = listings  # exactly these, e.g. the one listing `jobhunt add` just stored
+    elif rescore:
+        pending = store.unexpired_listings(today, include_rated=include_rated)
+    else:
+        pending = store.unscored_listings(today)
     if not pending:
         return result
     profile = paths.profile.read_text() if paths.profile.exists() else ""

@@ -83,9 +83,10 @@ def fetch(
 
 
 RESCORE_HELP = (
-    "Score every unexpired listing again, replacing existing scores "
+    "Score every unexpired, unrated listing again, replacing existing scores "
     "(e.g. after editing profile/ or preferences; one Claude call per batch)"
 )
+INCLUDE_RATED_HELP = "With --rescore, also re-score listings you already rated"
 
 
 @app.command()
@@ -93,9 +94,12 @@ def score(
     ctx: typer.Context,
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the first prompt and stop"),
     rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
+    include_rated: bool = typer.Option(False, "--include-rated", help=INCLUDE_RATED_HELP),
 ) -> None:
     """Score unscored listings with Claude (`claude -p`)."""
-    _workspace(ctx).score(rescore=rescore, dry_run=dry_run, progress=typer.echo)
+    _workspace(ctx).score(
+        rescore=rescore, dry_run=dry_run, include_rated=include_rated, progress=typer.echo
+    )
 
 
 @app.command()
@@ -119,9 +123,17 @@ def check(
     fixture: Path | None = typer.Option(None, help="Load listings from a JSON fixture instead"),
     no_score: bool = typer.Option(False, "--no-score", help="Skip Claude scoring"),
     rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
+    include_rated: bool = typer.Option(False, "--include-rated", help=INCLUDE_RATED_HELP),
 ) -> None:
     """fetch → score → digest, in one go."""
-    _workspace(ctx).check(source, fixture, no_score=no_score, rescore=rescore, progress=typer.echo)
+    _workspace(ctx).check(
+        source,
+        fixture,
+        no_score=no_score,
+        rescore=rescore,
+        include_rated=include_rated,
+        progress=typer.echo,
+    )
 
 
 @app.command()
@@ -160,6 +172,120 @@ def rate(
 
 
 @app.command()
+def add(
+    ctx: typer.Context,
+    url: str = typer.Argument(..., help="Link to a vacancy page"),
+    title: str = typer.Option("", help="Skip fetching and use this title"),
+    employer: str = typer.Option("", help="Employer (default: the site name or domain)"),
+    description: str = typer.Option("", help="Description text, when the page cannot be read"),
+    no_score: bool = typer.Option(False, "--no-score", help="Store it without scoring it"),
+) -> None:
+    """Add a listing from a link, so it is scored and ranked like the fetched ones."""
+    from jobhunt.sources.manual import ManualFetchError
+
+    ws = _workspace(ctx)
+    try:
+        listing, score = ws.add(
+            url,
+            title=title,
+            employer=employer,
+            description=description,
+            score=not no_score,
+            progress=typer.echo,
+        )
+    except ManualFetchError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    if score is not None:
+        typer.echo(f"score {score.score} ({score.role_type}) — {score.why}")
+
+
+def _show_listing(listing, score, rating) -> str:
+    lines = [f"{listing.title} — {listing.employer}", listing.url]
+    meta = [f"source {listing.source}", f"id {listing.id}"]
+    if listing.location:
+        meta.append(listing.location)
+    if listing.deadline:
+        meta.append(f"deadline {listing.deadline.isoformat()}")
+    lines.append(" · ".join(meta))
+    if score is not None:
+        lines.append(f"score {score.score} ({score.role_type}) — {score.why}")
+        if score.concerns:
+            lines.append(f"concerns: {score.concerns}")
+    else:
+        lines.append("not scored yet")
+    if rating is not None:
+        note = f" — {rating.note}" if rating.note else ""
+        lines.append(f"rated {rating.rating}/5{note}")
+    body = listing.description or listing.summary
+    if body:
+        lines += ["", body[:1000]]
+    return "\n".join(lines)
+
+
+@app.command()
+def show(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+) -> None:
+    """Print what the store knows about one listing: its score, why, and your rating."""
+    ws = _workspace(ctx)
+    store = ws.store
+    found = store.get_listing(listing) or store.find_by_url(listing)
+    if found is None:
+        typer.echo(f"{listing} is not in the store (add it with: jobhunt add URL)", err=True)
+        raise typer.Exit(1)
+    typer.echo(_show_listing(found, store.get_score(found.id), store.get_rating(found.id)))
+
+
+@app.command()
+def learn(ctx: typer.Context) -> None:
+    """Regenerate the learned preferences from every rating (one Claude call)."""
+    if not _workspace(ctx).learn(progress=typer.echo):
+        raise typer.Exit(1)
+
+
+@app.command()
+def update(
+    ctx: typer.Context,
+    check: bool = typer.Option(False, "--check", help="Report what an update would do and stop"),
+) -> None:
+    """Update the engine to the newest commit on GitHub, or say why it cannot be checked."""
+    from jobhunt.update import EngineInstall, UpdateError, Updater
+
+    ws = _workspace(ctx)
+    # No restart: a CLI run just exits when uv sync is done (the server needs one, we do not).
+    updater = Updater(EngineInstall.detect(), ws.paths.root, restart=lambda: None)
+    status = updater.status()
+    commit = f" ({status.commit[:7]})" if status.commit else ""
+    typer.echo(f"installed: jobhunt {status.version}{commit}")
+    if status.reason:
+        typer.echo(f"no update check: {status.reason}")
+        raise typer.Exit(0 if check else 1)
+    typer.echo(f"tracking:  {status.tracking}")
+    available = updater.check()
+    if error := updater.status().error:
+        typer.echo(f"check failed: {error}", err=True)
+        raise typer.Exit(1)
+    if available is None:
+        typer.echo("up to date")
+        return
+    typer.echo(f"available: jobhunt {available.version} ({available.commit[:7]})")
+    for entry in available.entries:
+        typer.echo(f"  {entry.version} — {entry.date}")
+        for note in entry.notes:
+            typer.echo(f"    - {note}")
+    if check:
+        typer.echo("run `jobhunt update` to install it")
+        return
+    try:
+        updater.update(progress=typer.echo)
+    except UpdateError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
 def sources(ctx: typer.Context) -> None:
     """List known sources and whether they are enabled."""
     enabled = set(_workspace(ctx).config.enabled_sources())
@@ -186,8 +312,12 @@ def serve(
     from jobhunt.web.app import create_app
 
     ws = _workspace(ctx)
-    updater = Updater(EngineInstall.detect(), ws.paths.root)
-    updater.start()  # `git ls-remote` every 10 min; the UI shows a banner when the engine moved
+    updates = ws.settings.updates
+    updater = Updater(
+        EngineInstall.detect(), ws.paths.root, interval=updates.interval_minutes * 60
+    )
+    if updates.check:  # `git ls-remote` on a timer; the UI shows a banner when the engine moved
+        updater.start()
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     typer.echo(f"jobhunt UI: {url} (Ctrl-C to stop)")
     if open_browser:

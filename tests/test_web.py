@@ -291,8 +291,8 @@ def test_health_reports_version_and_a_boot_id(client):
 
 def test_every_action_says_when_to_use_it(client):
     page = client.get("/").text
-    # one "when to use this" line under each of the five action buttons
-    assert page.count('<p class="when">') == 5
+    # one "when to use this" line under each of the six action buttons
+    assert page.count('<p class="when">') == 6
     assert "Your normal daily run" in page
     assert "never touches the rules you wrote yourself" in page
 
@@ -325,3 +325,180 @@ def test_dashboard_links_to_prefilled_issue_forms(client):
         "https://github.com/jessefontaine/jobhunt/issues/new?template=feature_request.yml" in page
     )
     assert "environment=jobhunt+0.2.0+%28aaaaaaa%29" in page
+
+
+# -- settings ---------------------------------------------------------------
+
+
+def test_settings_page_shows_the_current_values(client):
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert 'name="display.theme"' in r.text
+    assert 'name="rated.hide_below"' in r.text
+    assert 'name="updates.check"' in r.text
+
+
+def test_saving_settings_writes_the_file_and_applies_it(client, ws):
+    r = client.post(
+        "/settings",
+        data={"display.theme": "dark", "display.min_score": "40", "updates.check": "1"},
+        follow_redirects=True,
+    )
+    assert r.status_code == 200
+    assert ws.paths.settings_yaml.exists()
+    assert ws.settings.display.theme == "dark"
+    assert ws.settings.display.min_score == 40
+
+
+def test_saving_an_impossible_range_keeps_the_old_settings(client, ws):
+    r = client.post(
+        "/settings",
+        data={"display.min_score": "90", "display.max_score": "10"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert "not saved" in r.text
+    assert not ws.paths.settings_yaml.exists()
+
+
+def test_the_theme_setting_reaches_the_page(client, ws):
+    client.post("/settings", data={"display.theme": "dark"}, follow_redirects=True)
+    assert 'data-theme="dark"' in client.get("/").text
+
+
+def test_the_header_has_a_theme_toggle(client):
+    assert 'action="/settings/theme"' in client.get("/").text
+
+
+def test_the_theme_toggle_switches_and_comes_back(client, ws):
+    r = client.post("/settings/theme", data={"next": "/queue"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert ws.settings.display.theme in ("light", "dark")
+
+
+# -- filtering --------------------------------------------------------------
+
+
+def test_queue_hides_listings_outside_the_score_range(ws):
+    fetched(ws)
+    ws.score()  # the fake runner scores the two open listings 90 and 80
+    listings = ws.store.candidate_listings(date.today())
+    scores = ws.store.get_scores([lst.id for lst in listings])
+    best = max(listings, key=lambda lst: scores[lst.id].score)
+    worst = min(listings, key=lambda lst: scores[lst.id].score)
+    ws.settings.display.min_score = 85
+    r = web(ws, updater(ws)).get("/queue")
+    assert best.title in r.text
+    assert worst.title not in r.text
+    assert "1 hidden by your score filter" in r.text
+
+
+def test_rated_page_hides_old_low_ratings(ws):
+    from datetime import datetime
+
+    from jobhunt.models import Rating
+
+    fetched(ws)
+    old = listing_id(ws, "RA fMRI")
+    ws.store.save_rating(
+        Rating(listing_id=old, rating=1, rated_at=datetime(2020, 1, 1), digest="web")
+    )
+    client = web(ws, updater(ws))
+    assert "RA fMRI" not in client.get("/rated").text
+    assert "1 hidden" in client.get("/rated").text
+    assert "RA fMRI" in client.get("/rated?all=1").text
+
+
+def test_rated_page_keeps_a_fresh_low_rating(ws):
+    from jobhunt.models import Rating
+
+    fetched(ws)
+    ws.store.save_rating(Rating(listing_id=listing_id(ws, "RA fMRI"), rating=1, digest="web"))
+    assert "RA fMRI" in web(ws, updater(ws)).get("/rated").text
+
+
+# -- add a link -------------------------------------------------------------
+
+
+def test_add_link_form_is_on_the_dashboard(client):
+    assert 'action="/actions/add"' in client.get("/").text
+
+
+def test_add_link_action_stores_the_listing(client, ws):
+    r = client.post(
+        "/actions/add",
+        data={"url": "https://example.org/j/9", "title": "Pasted PhD", "employer": "Example"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert client.get("/jobs/1").json()["status"] == "done"
+    assert ws.store.find_by_url("https://example.org/j/9").title == "Pasted PhD"
+
+
+def test_add_link_needs_a_url(client):
+    r = client.post("/actions/add", data={"url": " "}, follow_redirects=False)
+    assert r.status_code == 400
+    assert "paste a link" in r.text
+
+
+# -- update status ----------------------------------------------------------
+
+
+def test_dashboard_shows_what_the_update_check_tracks(ws):
+    u = updater(ws)
+    u.check()
+    r = web(ws, u).get("/")
+    assert "https://github.com/x/jobhunt@HEAD" in r.text
+    assert "Checked" in r.text
+
+
+def test_dashboard_shows_the_last_check_error(ws):
+    u = updater(ws)
+    u.last_error = "git ls-remote: Authentication failed"
+    u.checked_at = __import__("datetime").datetime(2026, 9, 22, 10, 0)
+    assert "Authentication failed" in web(ws, u).get("/").text
+
+
+def test_dashboard_explains_why_a_checkout_is_never_checked(ws):
+    u = updater(ws, install=EngineInstall(path=Path("/src/jobhunt")))
+    assert "development checkout" in web(ws, u).get("/").text
+
+
+def test_dashboard_says_when_automatic_checks_are_off(ws):
+    ws.settings.updates.check = False
+    assert "Automatic checks are off" in web(ws, updater(ws)).get("/").text
+
+
+def test_check_now_runs_a_job(ws):
+    u = updater(ws, install=EngineInstall(path=Path("/src/jobhunt")))
+    client = web(ws, u)
+    r = client.post("/actions/update-check", follow_redirects=False)
+    assert r.status_code == 303
+    job = client.get("/jobs/1").json()
+    assert job["name"] == "update check" and job["status"] == "done"
+    assert any("development checkout" in line for line in job["lines"])
+
+
+# -- chrome -----------------------------------------------------------------
+
+
+def test_the_nav_sticks_to_the_top(client):
+    assert "position: sticky" in client.get("/static/style.css").text
+
+
+def test_cards_flag_a_deadline_that_is_close(ws):
+    fetched(ws)
+    ws.settings.display.deadline_soon_days = 36500  # every future deadline counts as soon
+    assert "closes in" in web(ws, updater(ws)).get("/queue").text
+
+
+def test_shortlist_page_and_count_follow_the_rating_threshold(ws):
+    from jobhunt.models import Rating
+
+    fetched(ws)
+    ws.store.save_rating(Rating(listing_id=listing_id(ws, "RA fMRI"), rating=3, digest="web"))
+    ws.settings.shortlist.min_rating = 3
+    client = web(ws, updater(ws))
+    assert "RA fMRI" in client.get("/shortlist").text
+    assert "<b>1</b> on the shortlist" in client.get("/").text
+    assert "RA fMRI" in ws.paths.shortlist.read_text()

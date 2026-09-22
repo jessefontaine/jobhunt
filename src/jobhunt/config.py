@@ -46,6 +46,10 @@ class Paths:
     def sources_yaml(self) -> Path:
         return self.root / "config" / "sources.yaml"
 
+    @property
+    def settings_yaml(self) -> Path:
+        return self.root / "config" / "settings.yaml"
+
 
 class ScoringConfig(BaseModel):
     model: str = "sonnet"

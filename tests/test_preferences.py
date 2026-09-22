@@ -242,3 +242,45 @@ def test_the_scaffolded_preferences_file_survives_a_regeneration():
     prefs = split_preferences(template)
     assert prefs.manual == "" and prefs.learned == "" and prefs.specifics == ""
     assert render_preferences(prefs) == template  # head and headings come back untouched
+
+
+def test_preferences_prompt_uses_the_configured_caps(env):
+    from jobhunt.settings import PreferenceSettings
+
+    paths, store = env
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return _output(rules=["r"])
+
+    caps = PreferenceSettings(max_rules=4, max_specifics=2, max_words_per_rule=12)
+    regenerate_preferences(paths, store, runner, "m", caps)
+    assert "at most 4 general patterns" in seen["prompt"]
+    assert "at most 2 narrow observations" in seen["prompt"]
+    assert "at most 12 words" in seen["prompt"]
+
+
+def test_preferences_prompt_defaults_to_ten_rules(env):
+    paths, store = env
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return _output(rules=["r"])
+
+    regenerate_preferences(paths, store, runner, "m")
+    assert "at most 10 general patterns" in seen["prompt"]
+
+
+def test_preferences_prompt_asks_for_overlapping_rules_to_be_merged(env):
+    paths, store = env
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return _output(rules=["r"])
+
+    regenerate_preferences(paths, store, runner, "m")
+    assert "Merge" in seen["prompt"]
+    assert "promote" in seen["prompt"].lower()

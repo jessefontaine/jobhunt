@@ -3,7 +3,9 @@ from datetime import date
 import pytest
 
 from jobhunt import pipeline
+from jobhunt.config import DigestConfig
 from jobhunt.models import Listing
+from jobhunt.settings import DisplaySettings, Settings
 from jobhunt.sources import _SOURCES
 from jobhunt.sources.base import SourceResult
 from jobhunt.store import Store
@@ -94,7 +96,11 @@ def test_build_digest_limit_keeps_best_scored_then_unscored(tmp_path):
     store.upsert_listings(listings)
     store.save_scores([Score(listing_id=listings[n].id, score=n * 10) for n in range(4)])
     path = pipeline.build_digest(
-        store, tmp_path / "digests", date(2026, 9, 17), pipeline.RunInfo(), limit=3
+        store,
+        tmp_path / "digests",
+        date(2026, 9, 17),
+        pipeline.RunInfo(),
+        settings=Settings(digest=DigestConfig(limit=3)),
     )
     md = path.read_text()
     assert "J3" in md and "J2" in md and "J1" in md
@@ -109,3 +115,49 @@ def test_fetch_sources_reports_progress_per_source(registered, tmp_path):
     assert messages[0] == "fake: fetching…"
     assert any("fake: 2 new" in m for m in messages)
     assert any("details" in m for m in messages)
+
+
+def test_build_digest_applies_the_score_range(tmp_path):
+    from jobhunt.models import Score
+
+    store = Store(tmp_path / "db")
+    listings = [Listing(source="s", title=f"J{n}", employer="U", url=f"u{n}") for n in range(3)]
+    store.upsert_listings(listings)
+    store.save_scores(
+        [Score(listing_id=listings[n].id, score=score) for n, score in enumerate([90, 50, 20])]
+    )
+    path = pipeline.build_digest(
+        store,
+        tmp_path / "digests",
+        date(2026, 9, 17),
+        pipeline.RunInfo(),
+        settings=Settings(display=DisplaySettings(min_score=40, max_score=80)),
+    )
+    md = path.read_text()
+    assert "J1" in md
+    assert "J0" not in md and "J2" not in md
+
+
+def test_build_digest_drops_unscored_listings_once_a_floor_is_set(tmp_path):
+    store = Store(tmp_path / "db")
+    store.upsert_listings([Listing(source="s", title="NoScoreYet", employer="U", url="u1")])
+    path = pipeline.build_digest(
+        store,
+        tmp_path / "digests",
+        date(2026, 9, 17),
+        pipeline.RunInfo(),
+        settings=Settings(display=DisplaySettings(min_score=40)),
+    )
+    assert "NoScoreYet" not in path.read_text()
+
+
+def test_write_shortlist_uses_the_configured_rating_threshold(tmp_path):
+    from jobhunt.models import Rating
+
+    store = Store(tmp_path / "db")
+    lst = Listing(source="s", title="Maybe", employer="U", url="u1")
+    store.upsert_listings([lst])
+    store.save_rating(Rating(listing_id=lst.id, rating=3))
+    path = tmp_path / "shortlist.md"
+    assert "Maybe" not in pipeline.write_shortlist(store, path, date(2026, 9, 17))
+    assert "Maybe" in pipeline.write_shortlist(store, path, date(2026, 9, 17), min_rating=3)
