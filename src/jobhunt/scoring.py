@@ -11,6 +11,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field, ValidationError
 
+from jobhunt.calibration import surprise
 from jobhunt.config import Paths, ScoringConfig
 from jobhunt.models import Listing, Rating, RoleType, Score
 from jobhunt.store import Store
@@ -61,14 +62,23 @@ Return ONLY JSON of the form {"scores": [ {...}, ... ]} — no prose.
 """
 
 
-def format_rated(examples: list[tuple[Listing, Rating]], empty: str = "(none)") -> str:
-    """One line per rated listing, e.g. `- [5/5] Title — Employer — note: …`."""
+def format_rated(
+    examples: list[tuple[Listing, Rating]],
+    empty: str = "(none)",
+    scores: dict[str, Score] | None = None,
+) -> str:
+    """One line per rated listing, e.g. `- [5/5] Title — Employer — you scored 90 — note: …`.
+
+    The score is what Claude gave that listing, so a prompt can see where it was wrong.
+    """
     if not examples:
         return empty
+    scores = scores or {}
     lines = []
     for lst, rating in examples:
         note = f" — note: {rating.note}" if rating.note else ""
-        lines.append(f"- [{rating.rating}/5] {lst.title} — {lst.employer}{note}")
+        scored = f" — you scored {scores[lst.id].score}" if lst.id in scores else ""
+        lines.append(f"- [{rating.rating}/5] {lst.title} — {lst.employer}{scored}{note}")
         if lst.summary:
             lines.append(f"    {lst.summary[:300]}")
     return "\n".join(lines)
@@ -91,6 +101,7 @@ def build_prompt(
     cv: str,
     examples: list[tuple[Listing, Rating]],
     batch: list[Listing],
+    scores: dict[str, Score] | None = None,
 ) -> str:
     return "\n".join(
         [
@@ -105,7 +116,10 @@ def build_prompt(
             cv.strip(),
             "",
             "# Listings this person already rated (5 = apply, 1 = irrelevant)",
-            format_rated(examples, empty="(no rated examples yet)"),
+            "`you scored N` is the score you gave that listing before they rated it. Where\n"
+            "the two disagree, the rating is right and the score was wrong — work out what\n"
+            "you missed and do not repeat it below.",
+            format_rated(examples, empty="(no rated examples yet)", scores=scores),
             "",
             "# Listings to score",
             json.dumps([_listing_block(lst) for lst in batch], ensure_ascii=False, indent=1),
@@ -191,6 +205,21 @@ class ScoreRunResult:
     errors: list[str] = field(default_factory=list)
 
 
+def by_surprise(
+    examples: list[tuple[Listing, Rating]], scores: dict[str, Score]
+) -> list[tuple[Listing, Rating]]:
+    """Rated examples with the ones the scorer got most wrong first, so they survive being
+    truncated to `cfg.examples`. Listings never scored come last — they carry no correction.
+    The sort is stable, so equally surprising examples keep their most-recent-first order."""
+
+    def rank(item: tuple[Listing, Rating]) -> tuple[int, int]:
+        lst, rating = item
+        score = scores.get(lst.id)
+        return (0, -surprise(score.score, rating.rating)) if score else (1, 0)
+
+    return sorted(examples, key=rank)
+
+
 def _chunks(items: list[Listing], size: int) -> list[list[Listing]]:
     return [items[i : i + size] for i in range(0, len(items), max(size, 1))]
 
@@ -234,6 +263,8 @@ def score_listings(
     # Over-fetch so a batch can drop examples for listings it contains (a rescored listing must
     # not see its own rating) and still have `cfg.examples` left.
     examples = store.rated_examples(cfg.examples + cfg.batch_size)
+    example_scores = store.get_scores([lst.id for lst, _ in examples])
+    examples = by_surprise(examples, example_scores)
 
     batches = _chunks(pending, cfg.batch_size)
     verb = "rescoring" if rescore else "scoring"
@@ -242,7 +273,7 @@ def score_listings(
     for n, batch in enumerate(batches, 1):
         ids = {lst.id for lst in batch}
         shown = [ex for ex in examples if ex[0].id not in ids][: cfg.examples]
-        prompt = build_prompt(profile, preferences, cv, shown, batch)
+        prompt = build_prompt(profile, preferences, cv, shown, batch, scores=example_scores)
         if dry_run:
             print(prompt)
             return result

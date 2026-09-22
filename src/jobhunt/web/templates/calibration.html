@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_card.html" import card %}
+{% block title %}Calibration · jobhunt{% endblock %}
+{% block content %}
+<h1>Calibration <small class="muted">{{ result.n }} rated listing{{ "" if result.n == 1 else "s" }}</small></h1>
+<p class="muted">How the scores line up with the ratings you gave. Nothing here calls Claude —
+   it reads what is already in the store.</p>
+
+{% if not result.n %}
+<p class="muted">Rate some listings first: score the <a href="/queue">queue</a>, rate what comes back,
+   then this page can tell you whether the scores are worth trusting.
+   {% if result.unscored %}({{ result.unscored }} rated listing{{ "" if result.unscored == 1 else "s" }}
+   had no score, so there is nothing to compare yet.){% endif %}</p>
+{% else %}
+
+<section class="stats">
+  <div><b>{{ "n/a" if result.rho is none else "%.2f"|format(result.rho) }}</b> Spearman ρ</div>
+  <div><b>{{ result.n }}</b> scores compared with ratings</div>
+  {% if result.unscored %}<div><b>{{ result.unscored }}</b> rated, never scored</div>{% endif %}
+</section>
+<p>{{ verdict }}</p>
+{% if result.n < enough %}
+<p class="muted">Too few ratings to read much into this — {{ enough }}+ makes the number mean something.</p>
+{% endif %}
+
+<h2>What each band turned out to be worth</h2>
+<table class="bands">
+  <tr><th>score</th><th>band</th><th>rated</th><th>mean rating</th></tr>
+  {% for band in result.bands if band.n %}
+  <tr>
+    <td>{{ band.low }}–{{ band.high }}</td>
+    <td>{{ band.label }}</td>
+    <td>{{ band.n }}</td>
+    <td>{{ "%.1f"|format(band.mean_rating) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">A band whose mean rating sits well below its own number is where the shortlist
+   threshold (<a href="/settings">Settings</a>: {{ settings.shortlist.min_rating }}) is worth a look.</p>
+
+<h2>Where the scores missed</h2>
+{% if items %}
+<p class="muted">The listings the scoring got most wrong, worst first. These carry more signal than
+   everything it got right — a note here is read by the next
+   <a href="/files/preferences">preferences</a> run, so say what was missed.</p>
+{% for item in items %}
+<p class="missed">{{ "Over-scored" if item.over_scored else "Under-scored" }} by
+   {{ item.surprise }} band{{ "" if item.surprise == 1 else "s" }}:
+   scored {{ item.score.score }}, you rated {{ item.rating.rating }}/5{% if not item.over_scored %} —
+   a listing this pipeline nearly hid from you{% endif %}.</p>
+{{ card(item, labels) }}
+{% endfor %}
+{% else %}
+<p class="muted">Nothing missed by two bands or more — the scores and your ratings agree on every
+   listing so far.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

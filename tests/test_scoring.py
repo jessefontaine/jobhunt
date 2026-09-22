@@ -1,11 +1,11 @@
 import json
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
 from jobhunt.config import Paths, ScoringConfig
 from jobhunt.models import Listing, Rating, Score
-from jobhunt.scoring import build_prompt, parse_response, score_listings
+from jobhunt.scoring import build_prompt, format_rated, parse_response, score_listings
 from jobhunt.store import Store
 
 TODAY = date(2026, 9, 17)
@@ -357,3 +357,94 @@ def test_score_listings_can_score_one_given_listing(env):
     assert other.id not in prompts[0]
     assert store.get_score(one.id).score == 77
     assert store.get_score(other.id) is None
+
+
+def _rated(n, rating, **kw):
+    return (L(n, **kw), Rating(listing_id=L(n).id, rating=rating))
+
+
+def test_format_rated_shows_the_score_claude_gave_that_listing():
+    scores = {L(9).id: Score(listing_id=L(9).id, score=88)}
+    line = format_rated([_rated(9, 2)], scores=scores)
+    assert "[2/5]" in line
+    assert "you scored 88" in line
+
+
+def test_format_rated_leaves_out_a_score_for_a_listing_that_was_never_scored():
+    assert "you scored" not in format_rated([_rated(9, 2)], scores={})
+
+
+def test_build_prompt_tells_claude_what_it_scored_the_rated_examples():
+    examples = [_rated(9, 1, title="Rated job")]
+    scores = {L(9).id: Score(listing_id=L(9).id, score=95)}
+    prompt = build_prompt("p", "q", "c", examples, [L(1)], scores=scores)
+    assert "you scored 95" in prompt
+
+
+def test_score_listings_tells_claude_what_it_scored_the_rated_examples(env):
+    paths, store = env
+    rated, other = L(1, title="Rated job"), L(2, title="Other job")
+    store.upsert_listings([rated, other])
+    store.save_rating(Rating(listing_id=rated.id, rating=1, note="nope"))
+    store.save_scores([Score(listing_id=rated.id, score=92, model="m")])
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([other], 50)(prompt, model, schema)
+
+    score_listings(store, paths, ScoringConfig(batch_size=5), runner, TODAY)
+    assert "you scored 92" in prompts[0]
+
+
+def test_prompt_explains_that_a_score_on_an_example_was_its_own():
+    examples = [_rated(9, 1, title="Rated job")]
+    scores = {L(9).id: Score(listing_id=L(9).id, score=95)}
+    header, _, _ = build_prompt("p", "q", "c", examples, [L(1)], scores=scores).partition(
+        "- [1/5] Rated job"
+    )
+    assert "you scored" in header.split("# Listings this person already rated")[1]
+
+
+def test_score_listings_keeps_the_example_it_got_most_wrong_when_room_is_tight(env):
+    paths, store = env
+    agreed, missed, new = L(1, title="Agreed job"), L(2, title="Missed job"), L(3, title="New job")
+    store.upsert_listings([agreed, missed, new])
+    # `missed` is rated first, so recency alone would drop it — only surprise keeps it.
+    store.save_rating(Rating(listing_id=missed.id, rating=1, rated_at=datetime(2026, 9, 1)))
+    store.save_rating(Rating(listing_id=agreed.id, rating=5, rated_at=datetime(2026, 9, 2)))
+    store.save_scores(
+        [
+            Score(listing_id=agreed.id, score=90, model="m"),
+            Score(listing_id=missed.id, score=90, model="m"),
+        ]
+    )
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([new], 50)(prompt, model, schema)
+
+    score_listings(store, paths, ScoringConfig(batch_size=5, examples=1), runner, TODAY)
+    examples, _, _ = prompts[0].partition("# Listings to score")
+    assert "Missed job" in examples
+    assert "Agreed job" not in examples
+
+
+def test_score_listings_puts_examples_it_never_scored_behind_the_ones_it_did(env):
+    paths, store = env
+    unscored, missed, new = L(1, title="Unscored job"), L(2, title="Missed job"), L(3)
+    store.upsert_listings([unscored, missed, new])
+    store.save_rating(Rating(listing_id=missed.id, rating=1, rated_at=datetime(2026, 9, 1)))
+    store.save_rating(Rating(listing_id=unscored.id, rating=5, rated_at=datetime(2026, 9, 2)))
+    store.save_scores([Score(listing_id=missed.id, score=90, model="m")])
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([new], 50)(prompt, model, schema)
+
+    score_listings(store, paths, ScoringConfig(batch_size=5, examples=1), runner, TODAY)
+    examples, _, _ = prompts[0].partition("# Listings to score")
+    assert "Missed job" in examples
+    assert "Unscored job" not in examples

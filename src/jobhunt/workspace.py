@@ -8,10 +8,10 @@ from datetime import date
 from pathlib import Path
 
 from jobhunt import pipeline
-from jobhunt.calibration import Agreement, agreement
+from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
-from jobhunt.models import Listing, Score
+from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import regenerate_preferences
 from jobhunt.scoring import Runner, ScoreRunResult, claude_runner, score_listings
 from jobhunt.settings import Settings, load_settings
@@ -22,6 +22,26 @@ Progress = Callable[[str], None]
 
 def _silent(msg: str) -> None:
     pass
+
+
+# Below this gap a score and a rating are close enough to be noise, not a missed signal.
+MIN_SURPRISE = 2
+
+
+@dataclass
+class Disagreement:
+    """One listing where the score and the rating told different stories."""
+
+    listing: Listing
+    score: Score
+    rating: Rating
+    surprise: int
+
+    @property
+    def over_scored(self) -> bool:
+        """True when the score promised more than the rating gave — a missed dealbreaker.
+        False the other way round: a listing that was nearly filtered out of sight."""
+        return expected_rating(self.score.score) > self.rating.rating
 
 
 @dataclass
@@ -187,6 +207,18 @@ class Workspace:
         scores = self.store.get_scores([lst.id for lst, _ in rated])
         pairs = [(scores[lst.id].score, r.rating) for lst, r in rated if lst.id in scores]
         return agreement(pairs, unscored=len(rated) - len(pairs))
+
+    def disagreements(self, limit: int = 5, floor: int = MIN_SURPRISE) -> list[Disagreement]:
+        """Rated listings whose score missed by `floor` bands or more, worst first."""
+        rated = self.store.all_ratings()
+        scores = self.store.get_scores([lst.id for lst, _ in rated])
+        out = [
+            Disagreement(lst, scores[lst.id], rating, surprise(scores[lst.id].score, rating.rating))
+            for lst, rating in rated
+            if lst.id in scores
+        ]
+        out = [d for d in out if d.surprise >= floor]
+        return sorted(out, key=lambda d: -d.surprise)[:limit]
 
     def learn(self, progress: Progress = _silent) -> bool:
         """Regenerate `## Learned` in preferences.md from every rating (one Claude call)."""

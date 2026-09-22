@@ -502,3 +502,43 @@ def test_shortlist_page_and_count_follow_the_rating_threshold(ws):
     assert "RA fMRI" in client.get("/shortlist").text
     assert "<b>1</b> on the shortlist" in client.get("/").text
     assert "RA fMRI" in ws.paths.shortlist.read_text()
+
+
+def _scored_and_rated(client, ws, title, score, rating):
+    from jobhunt.models import Score
+
+    lid = listing_id(ws, title)
+    ws.store.save_scores([Score(listing_id=lid, score=score, model="m")])
+    client.post("/ratings", data={"listing_id": lid, "rating": str(rating)})
+    return lid
+
+
+def test_calibration_page_reports_the_correlation_and_the_bands(client, ws):
+    fetched(ws)
+    _scored_and_rated(client, ws, "PhD vision", 90, 5)
+    _scored_and_rated(client, ws, "RA fMRI", 45, 2)
+
+    page = client.get("/calibration").text
+
+    assert "2 rated listings" in page
+    assert "1.00" in page
+    assert "apply" in page and "maybe" in page
+
+
+def test_calibration_page_asks_for_ratings_when_there_are_none(client):
+    assert "Rate some listings first" in client.get("/calibration").text
+
+
+def test_calibration_page_lists_the_listings_the_scores_got_wrong(client, ws):
+    fetched(ws)
+    _scored_and_rated(client, ws, "PhD vision", 95, 1)
+    _scored_and_rated(client, ws, "RA fMRI", 70, 4)  # agrees, so not a disagreement
+
+    page = client.get("/calibration").text
+
+    assert "PhD vision" in page
+    assert "RA fMRI" not in page
+
+
+def test_calibration_is_reachable_from_every_page(client):
+    assert 'href="/calibration"' in client.get("/").text

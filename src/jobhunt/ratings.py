@@ -132,6 +132,12 @@ Below are job listings the person described in the profile has rated from 5 (app
 to 1 (irrelevant), with optional notes, the rules that person wrote themselves, and the
 rules previously learned from earlier ratings.
 
+Each listing also carries `you scored N` — what a scorer using the current rules gave it
+before the person rated it. A listing you scored high and they rated low means the rules are
+missing something that puts them off; one you scored low and they rated high means the rules
+are missing something they want. Those gaps are the most informative listings here: say what
+was missed, rather than restating what the scores already got right.
+
 The person's own rules are context only. Never restate, weaken or contradict them, and do
 not write a rule that covers the same ground — they always win. If the ratings seem to
 disagree with one of them, leave it alone.
@@ -218,6 +224,7 @@ def render_preferences(prefs: Preferences) -> str:
 
 
 def _preferences_prompt(prefs: Preferences, store: Store, caps: PreferenceSettings) -> str:
+    rated = store.all_ratings()
     return "\n".join(
         [
             preferences_instructions(caps),
@@ -231,7 +238,7 @@ def _preferences_prompt(prefs: Preferences, store: Store, caps: PreferenceSettin
             prefs.specifics or "(none)",
             "",
             "# Rated listings (most recent first)",
-            format_rated(store.all_ratings()),
+            format_rated(rated, scores=store.get_scores([lst.id for lst, _ in rated])),
         ]
     )
 
