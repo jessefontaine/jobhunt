@@ -4,6 +4,13 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.6.0 — 2026-09-22
+- New `jobhunt calibration`: pairs every rating with the score that listing got and reports the
+  Spearman rank correlation between them, plus the mean rating per score band.
+- The report says what the correlation means, flags scores that point the wrong way, and warns
+  when there are too few ratings (under 10) to read anything into the number.
+- Ratings given to listings that were never scored are counted and left out of the correlation.
+
 ## 0.5.0 — 2026-09-22
 - Settings: a new `config/settings.yaml` and a Settings page in the UI. Light/dark/auto theme
   with a toggle in the header, a score range that the queue and new digests obey, queue order,

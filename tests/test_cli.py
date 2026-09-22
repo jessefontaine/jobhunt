@@ -349,3 +349,19 @@ def test_show_reports_an_unknown_link(scored_root):
     result = run(scored_root, "show", "https://x.org/nope")
     assert result.exit_code == 1
     assert "not in the store" in result.output
+
+
+def test_calibration_says_there_is_nothing_to_compare_yet(root):
+    result = run(root, "calibration")
+    assert result.exit_code == 0, result.output
+    assert "0 rated listings" in result.output
+
+
+def test_calibration_counts_ratings_given_without_a_score(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    _rate(root, "PhD vision", 5)
+
+    result = run(root, "calibration")
+
+    assert result.exit_code == 0, result.output
+    assert "1 rated listing had no score" in result.output

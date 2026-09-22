@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from jobhunt import pipeline
+from jobhunt.calibration import Agreement, agreement
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
 from jobhunt.models import Listing, Score
@@ -179,6 +180,13 @@ class Workspace:
         return pipeline.write_shortlist(
             self.store, self.paths.shortlist, date.today(), self.settings.shortlist.min_rating
         )
+
+    def calibration(self) -> Agreement:
+        """Pair every rating with the score that listing was given, and summarise the two."""
+        rated = self.store.all_ratings()
+        scores = self.store.get_scores([lst.id for lst, _ in rated])
+        pairs = [(scores[lst.id].score, r.rating) for lst, r in rated if lst.id in scores]
+        return agreement(pairs, unscored=len(rated) - len(pairs))
 
     def learn(self, progress: Progress = _silent) -> bool:
         """Regenerate `## Learned` in preferences.md from every rating (one Claude call)."""

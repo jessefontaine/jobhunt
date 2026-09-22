@@ -59,6 +59,10 @@ may not contradict. The next `score` run reads all three plus your rated listing
 That only affects listings scored from then on — after editing your profile or preferences, run
 `uv run jobhunt check --rescore` (or `score --rescore`) to re-score everything still open.
 
+To see whether the scores are worth trusting, `uv run jobhunt calibration` ranks Claude's
+scores against your ratings (Spearman) and prints the mean rating per score band — which is
+also how you find the right shortlist threshold. It needs ~10 ratings to mean anything.
+
 | rating | meaning |
 |--------|---------|
 | 5 | apply |
@@ -115,6 +119,7 @@ editing, to your network.
 | `jobhunt show URL-or-id` | print a listing with its score, why, concerns and your rating |
 | `jobhunt digest` | re-render a digest from the store |
 | `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
+| `jobhunt calibration` | check the scores against your ratings: rank correlation and the mean rating per score band |
 | `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |
 | `jobhunt learn` | regenerate the learned preferences from every rating (one Claude call) |
