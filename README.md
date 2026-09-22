@@ -51,8 +51,10 @@ Open the digest, fill in `rating:` (1–5) and optionally `note:` under listings
 Listings you rated 4–5 that are still open appear in a `## Shortlist` at the top of every digest
 and in `shortlist.md` (`uv run jobhunt shortlist` prints it). To change a rating, edit the
 `rating:` line in the digest you rated it in and run `uv run jobhunt rate digests/<that-file>.md`.
-After ≥3 new ratings, `rate` regenerates the `## Learned` rules in `profile/preferences.md`
-(`--force` to do it sooner); the next `score` run reads them plus your rated listings as examples.
+After ≥3 new ratings, `rate` regenerates `profile/preferences.md` (`--force` to do it sooner):
+`## Learned` gets the general patterns, `## Specifics` the narrow one-off inferences, and your
+own `## Manual` rules are left exactly as you wrote them — they are shown to Claude as rules it
+may not contradict. The next `score` run reads all three plus your rated listings as examples.
 That only affects listings scored from then on — after editing your profile or preferences, run
 `uv run jobhunt check --rescore` (or `score --rescore`) to re-score everything still open.
 
@@ -128,7 +130,7 @@ Blocked sites are never worked around; you get a link to open by hand.
 | path | purpose |
 |------|---------|
 | `profile/profile.md` | who you are and what you want — hand-edited, read by the scorer |
-| `profile/preferences.md` | `## Manual` rules (yours) + `## Learned` rules (regenerated from ratings) |
+| `profile/preferences.md` | `## Manual` rules (yours, never touched) + `## Learned` and `## Specifics` (regenerated from ratings) |
 | `docs/cv.md` | plain-text CV, read by the scorer (`scripts/extract-cv.sh` makes it from a PDF) |
 | `config/sources.yaml` | `contact`, `scoring` (model, batch size, examples), `digest.limit`, per-source settings |
 | `data/ratings.jsonl` | append-only rating log — the durable record |

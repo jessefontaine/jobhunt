@@ -4,6 +4,13 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.4.0 — 2026-09-22
+- Regenerating preferences never rewrites the Manual rules you wrote yourself, or any other
+  section you added; Claude is shown them as fixed context it may not restate or contradict.
+- The rules it writes are now split in two: Learned for general patterns, Specifics for narrow
+  one-off inferences about a single employer, method or caveat.
+- Every action on the dashboard says when to use it, in a line under the button.
+
 ## 0.3.4 — 2026-09-21
 - Dashboard: the What's new changelog is collapsed by default; click the heading to open it.
 
