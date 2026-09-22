@@ -22,15 +22,20 @@ intro text
 
 
 def test_split_preferences_separates_manual_and_learned():
-    head, manual, learned = split_preferences(PREFS)
-    assert "intro text" in head
-    assert manual.strip() == "- I hate wet lab"
-    assert learned.strip() == "- old rule"
+    prefs = split_preferences(PREFS)
+    assert "intro text" in prefs.head
+    assert prefs.manual == "- I hate wet lab"
+    assert prefs.learned == "- old rule"
 
 
 def test_split_preferences_handles_missing_sections():
-    head, manual, learned = split_preferences("# Preferences\n\njust text\n")
-    assert "just text" in head and manual == "" and learned == ""
+    prefs = split_preferences("# Preferences\n\njust text\n")
+    assert "just text" in prefs.head and prefs.manual == "" and prefs.learned == ""
+
+
+def test_split_preferences_keeps_sections_it_does_not_know():
+    prefs = split_preferences(PREFS + "\n## Scratch\n\n- keep me\n")
+    assert prefs.extra == "## Scratch\n\n- keep me"
 
 
 @pytest.fixture
@@ -65,10 +70,10 @@ def test_regenerate_preferences_replaces_learned_and_keeps_manual(env):
     ok = regenerate_preferences(paths, store, runner, "sonnet")
     assert ok
     text = paths.preferences.read_text()
-    head, manual, learned = split_preferences(text)
-    assert manual.strip() == "- I hate wet lab"
-    assert learned.strip() == "- Likes NeuroAI labs\n- Avoids clinical"
-    assert "intro text" in head
+    prefs = split_preferences(text)
+    assert prefs.manual == "- I hate wet lab"
+    assert prefs.learned == "- Likes NeuroAI labs\n- Avoids clinical"
+    assert "intro text" in prefs.head
     assert "NeuroAI PhD" in seen["prompt"] and "dream lab" in seen["prompt"]
     assert "5/5" in seen["prompt"] and "1/5" in seen["prompt"]
     assert "old rule" in seen["prompt"]  # prior rules offered for keep/drop
@@ -118,3 +123,60 @@ def test_failed_regeneration_does_not_record_learned_at(env):
     paths, store = env
     assert not regenerate_preferences(paths, store, lambda *a: "garbage", "sonnet")
     assert learned_at(store) is None
+
+
+FANCY_MANUAL = """# Preferences
+
+## Manual
+
+Rules I wrote myself.
+
+- top rule
+  - a sub-bullet, indented
+
+- after a blank line
+
+## Learned
+
+- old rule
+
+## Scratch
+
+- my own extra section
+"""
+
+
+def test_regenerate_preferences_leaves_the_manual_section_verbatim(env):
+    paths, store = env
+    paths.preferences.write_text(FANCY_MANUAL)
+    runner = lambda *a: json.dumps({"structured_output": {"rules": ["new"]}})  # noqa: E731
+    assert regenerate_preferences(paths, store, runner, "m")
+    before = split_preferences(FANCY_MANUAL)
+    after = split_preferences(paths.preferences.read_text())
+    assert after.manual == before.manual
+    assert after.extra == before.extra  # sections the engine does not own survive too
+    assert after.learned == "- new"
+
+
+def test_regenerate_preferences_is_idempotent_on_the_manual_section(env):
+    paths, store = env
+    paths.preferences.write_text(FANCY_MANUAL)
+    runner = lambda *a: json.dumps({"structured_output": {"rules": ["new"]}})  # noqa: E731
+    assert regenerate_preferences(paths, store, runner, "m")
+    once = paths.preferences.read_text()
+    assert regenerate_preferences(paths, store, runner, "m")
+    assert paths.preferences.read_text() == once
+
+
+def test_preferences_prompt_shows_manual_rules_as_fixed_context(env):
+    paths, store = env
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return json.dumps({"structured_output": {"rules": ["r"]}})
+
+    regenerate_preferences(paths, store, runner, "m")
+    assert "- I hate wet lab" in seen["prompt"]
+    lower = seen["prompt"].lower()
+    assert "contradict" in lower and "own rules" in lower
