@@ -22,6 +22,7 @@ ratings loop stays intact.
 | Re-score everything after the user edited `profile/profile.md` or `profile/preferences.md` | `uv run jobhunt check --rescore` (replaces old scores; one Claude call per batch of 10, so mention it takes a while) |
 | Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |
 | Regenerate the learned preferences on their own | `uv run jobhunt learn` |
+| Check whether the scores match how the user actually rates | `uv run jobhunt calibration` (rank correlation + mean rating per band; needs ~10 ratings to mean anything) |
 | Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` — don't trust `ls | tail`) |
 | Browser UI (buttons, rating queue, editors, settings) | `uv run jobhunt serve` — runs until Ctrl-C, so start it in a terminal the user controls, not from a tool call that waits for exit |
 | Why no update banner appeared | `uv run jobhunt update --check` |

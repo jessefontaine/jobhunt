@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from jobhunt.calibration import render
 from jobhunt.config import Paths, find_root
 from jobhunt.digest import newest_digest
 from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl
@@ -114,6 +115,13 @@ def shortlist(ctx: typer.Context) -> None:
     ws = _workspace(ctx)
     typer.echo(ws.shortlist())
     typer.echo(f"shortlist: {ws.paths.shortlist}")
+
+
+@app.command()
+def calibration(ctx: typer.Context) -> None:
+    """Check Claude's scores against your ratings: rank correlation and a mean per band."""
+    ws = _workspace(ctx)
+    typer.echo(render(ws.calibration()))
 
 
 @app.command()
