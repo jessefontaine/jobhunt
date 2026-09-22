@@ -131,11 +131,14 @@ class Store:
         return [by_id[i] for i in ids if i in by_id]
 
     def unscored_listings(self, today: date) -> list[Listing]:
+        """Unexpired listings with no score and no rating — what `score` has left to do."""
         rows = self.conn.execute(
             """
             SELECT l.* FROM listings l
             LEFT JOIN scores s ON s.listing_id = l.id
+            LEFT JOIN ratings r ON r.listing_id = l.id
             WHERE s.listing_id IS NULL
+              AND r.listing_id IS NULL
               AND (l.deadline IS NULL OR l.deadline >= ?)
             ORDER BY l.fetched_at DESC
             """,
@@ -143,13 +146,20 @@ class Store:
         ).fetchall()
         return [self._row_to_listing(r) for r in rows]
 
-    def unexpired_listings(self, today: date) -> list[Listing]:
-        """Every listing whose deadline has not passed, scored or rated or not (for --rescore)."""
+    def unexpired_listings(self, today: date, include_rated: bool = False) -> list[Listing]:
+        """Listings whose deadline has not passed (what `--rescore` re-scores).
+
+        Rated listings are left out: the verdict is in, and re-scoring them costs a Claude
+        call for a listing that can no longer appear in a digest.
+        """
+        rated_clause = "" if include_rated else "AND r.listing_id IS NULL"
         rows = self.conn.execute(
-            """
-            SELECT * FROM listings
-            WHERE deadline IS NULL OR deadline >= ?
-            ORDER BY fetched_at DESC
+            f"""
+            SELECT l.* FROM listings l
+            LEFT JOIN ratings r ON r.listing_id = l.id
+            WHERE (l.deadline IS NULL OR l.deadline >= ?)
+              {rated_clause}
+            ORDER BY l.fetched_at DESC
             """,
             (today.isoformat(),),
         ).fetchall()

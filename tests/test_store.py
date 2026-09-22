@@ -46,7 +46,15 @@ def test_unscored_excludes_scored_and_expired(store):
     assert ids == {listing(1).id}
 
 
-def test_unexpired_includes_scored_and_rated_but_not_expired(store):
+def test_unscored_excludes_listings_already_rated(store):
+    today = date(2026, 9, 17)
+    store.upsert_listings([listing(1), listing(2)])
+    store.save_rating(Rating(listing_id=listing(2).id, rating=1))
+    ids = {lst.id for lst in store.unscored_listings(today)}
+    assert ids == {listing(1).id}
+
+
+def test_unexpired_includes_scored_but_not_rated_or_expired(store):
     today = date(2026, 9, 17)
     store.upsert_listings(
         [
@@ -59,7 +67,15 @@ def test_unexpired_includes_scored_and_rated_but_not_expired(store):
     store.save_scores([Score(listing_id=listing(3).id, score=50)])
     store.save_rating(Rating(listing_id=listing(4).id, rating=5))
     ids = {lst.id for lst in store.unexpired_listings(today)}
-    assert ids == {listing(1).id, listing(3).id, listing(4).id}
+    assert ids == {listing(1).id, listing(3).id}
+
+
+def test_unexpired_can_include_rated_on_request(store):
+    today = date(2026, 9, 17)
+    store.upsert_listings([listing(1), listing(4)])
+    store.save_rating(Rating(listing_id=listing(4).id, rating=5))
+    ids = {lst.id for lst in store.unexpired_listings(today, include_rated=True)}
+    assert ids == {listing(1).id, listing(4).id}
 
 
 def test_scores_roundtrip(store):

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ValidationError
 from jobhunt.config import Paths
 from jobhunt.models import Rating
 from jobhunt.scoring import Runner, _extract_payload, format_rated
+from jobhunt.settings import PreferenceSettings
 from jobhunt.store import Store
 
 ID_RE = re.compile(r"^<!-- id: ([0-9a-f]{12}) -->\s*$")
@@ -126,7 +127,7 @@ SECTION_RE = re.compile(r"^##[ \t]+(.+?)[ \t]*$", re.M)
 PLACEHOLDER = "(none yet)"
 PLACEHOLDER_RE = re.compile(r"^-?\s*\(none yet.*\)$")  # the empty-section marker, not a rule
 
-PREFERENCES_INSTRUCTIONS = """\
+PREFERENCES_TEMPLATE = """\
 Below are job listings the person described in the profile has rated from 5 (apply)
 to 1 (irrelevant), with optional notes, the rules that person wrote themselves, and the
 rules previously learned from earlier ratings.
@@ -137,17 +138,32 @@ disagree with one of them, leave it alone.
 
 Return two lists of bullet rules, both read by a scorer that ranks new listings:
 
-- "rules": at most 10 general patterns — what this person consistently rates HIGH and what
-  they rate LOW, named concretely (research areas, methods, role types, employers,
+- "rules": at most MAX_RULES general patterns — what this person consistently rates HIGH and
+  what they rate LOW, named concretely (research areas, methods, role types, employers,
   constraints). These should hold for listings you have not seen.
-- "specifics": at most 8 narrow observations that are too particular to be general rules —
-  one employer, one method, one recurring caveat, an exception to a pattern above. Name the
-  example they come from. Leave the list empty rather than padding it.
+- "specifics": at most MAX_SPECIFICS narrow observations that are too particular to be general
+  rules — one employer, one method, one recurring caveat, an exception to a pattern above. Name
+  the example they come from. Leave the list empty rather than padding it.
 
-Keep prior rules and specifics that the ratings still support; drop or rewrite ones the
-ratings contradict. Prefer fewer, sharper rules over many vague ones.
+Condense rather than accumulate. Both lists are rewritten in full every time and must not grow
+as ratings pile up:
+- Keep every bullet to at most MAX_WORDS words, one idea each.
+- Merge bullets that cover the same ground into the sharper one instead of keeping both.
+- When three or more ratings support a specific, promote it to a general rule and drop the
+  specific it came from.
+- Drop rules and specifics the current ratings no longer support.
+Prefer fewer, sharper rules over many vague ones; return fewer than the caps rather than
+padding to them.
 Return ONLY JSON: {"rules": ["...", "..."], "specifics": ["...", "..."]}.
 """
+
+
+def preferences_instructions(caps: PreferenceSettings) -> str:
+    return (
+        PREFERENCES_TEMPLATE.replace("MAX_RULES", str(caps.max_rules))
+        .replace("MAX_SPECIFICS", str(caps.max_specifics))
+        .replace("MAX_WORDS", str(caps.max_words_per_rule))
+    )
 
 
 class RuleSet(BaseModel):
@@ -201,10 +217,10 @@ def render_preferences(prefs: Preferences) -> str:
     return "\n\n".join(p for p in parts if p) + "\n"
 
 
-def _preferences_prompt(prefs: Preferences, store: Store) -> str:
+def _preferences_prompt(prefs: Preferences, store: Store, caps: PreferenceSettings) -> str:
     return "\n".join(
         [
-            PREFERENCES_INSTRUCTIONS,
+            preferences_instructions(caps),
             "# The person's own rules (fixed — never rewrite or contradict these)",
             prefs.manual or "(none)",
             "",
@@ -224,15 +240,25 @@ def _bullets(rules: list[str]) -> str:
     return "\n".join(f"- {r.strip()}" for r in rules if r.strip())
 
 
-def regenerate_preferences(paths: Paths, store: Store, runner: Runner, model: str) -> bool:
+def regenerate_preferences(
+    paths: Paths,
+    store: Store,
+    runner: Runner,
+    model: str,
+    caps: PreferenceSettings | None = None,
+) -> bool:
     """Rewrite `## Learned` and `## Specifics` from all ratings, leaving other sections alone.
 
-    Returns False and leaves the file untouched if Claude's output is unusable.
+    `caps` keeps the rewrite condensed (see `preferences_instructions`). Returns False and
+    leaves the file untouched if Claude's output is unusable.
     """
+    caps = caps or PreferenceSettings()
     pref_path = paths.preferences
     prefs = split_preferences(pref_path.read_text() if pref_path.exists() else "# Preferences\n")
     try:
-        payload = _extract_payload(runner(_preferences_prompt(prefs, store), model, RULE_SCHEMA))
+        payload = _extract_payload(
+            runner(_preferences_prompt(prefs, store, caps), model, RULE_SCHEMA)
+        )
         ruleset = RuleSet.model_validate(payload)
     except (ValueError, ValidationError, RuntimeError):
         return False

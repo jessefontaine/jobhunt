@@ -290,7 +290,25 @@ def test_rescore_failed_batch_keeps_old_score(env):
     assert not any("left unscored" in m for m in messages)
 
 
-def test_rescore_does_not_show_a_listing_its_own_rating(env):
+def test_rescore_skips_rated_listings(env):
+    paths, store = env
+    rated, other = L(1), L(2)
+    store.upsert_listings([rated, other])
+    store.save_rating(Rating(listing_id=rated.id, rating=5))
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([other], 50)(prompt, model, schema)
+
+    score_listings(store, paths, ScoringConfig(), runner, TODAY, rescore=True)
+    assert len(prompts) == 1
+    _, _, batch = prompts[0].partition("# Listings to score")
+    assert rated.id not in batch
+    assert other.id in batch
+
+
+def test_rescore_with_include_rated_does_not_show_a_listing_its_own_rating(env):
     paths, store = env
     rated, other = L(1, title="Rated job"), L(2, title="Other job")
     store.upsert_listings([rated, other])
@@ -302,7 +320,9 @@ def test_rescore_does_not_show_a_listing_its_own_rating(env):
         prompts.append(prompt)
         return _scoring_runner([rated, other], 50)(prompt, model, schema)
 
-    score_listings(store, paths, ScoringConfig(batch_size=1), runner, TODAY, rescore=True)
+    score_listings(
+        store, paths, ScoringConfig(batch_size=1), runner, TODAY, rescore=True, include_rated=True
+    )
     assert len(prompts) == 2
     for prompt in prompts:
         examples, _, batch = prompt.partition("# Listings to score")

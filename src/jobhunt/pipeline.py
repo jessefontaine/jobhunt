@@ -9,6 +9,7 @@ from typing import Any
 
 from jobhunt.digest import RunInfo, digest_path, render_digest, render_shortlist
 from jobhunt.models import Listing
+from jobhunt.settings import Settings
 from jobhunt.sources import get_source
 from jobhunt.store import Store
 
@@ -64,11 +65,27 @@ def _fetch_details(store: Store, http: Any, source: Any, listings: list[Listing]
 
 
 def build_digest(
-    store: Store, digests_dir: Path, today: date, info: RunInfo, limit: int | None = None
+    store: Store,
+    digests_dir: Path,
+    today: date,
+    info: RunInfo,
+    settings: Settings | None = None,
 ) -> Path:
-    """Write a digest of unexpired, not-yet-rated listings (best `limit` first); return its path."""
-    listings = store.candidate_listings(today)
-    scores = store.get_scores([lst.id for lst in listings])
+    """Write a digest of unexpired, not-yet-rated listings (best first); return its path.
+
+    The settings decide which scores are shown at all, how many entries fit, and which
+    deadlines are marked as closing soon.
+    """
+    settings = settings or Settings()
+    display = settings.display
+    candidates = store.candidate_listings(today)
+    scores = store.get_scores([lst.id for lst in candidates])
+    listings = [
+        lst
+        for lst in candidates
+        if display.in_range(scores[lst.id].score if lst.id in scores else None)
+    ]
+    limit = settings.digest.limit
     if limit is not None and len(listings) > limit:
         scored = sorted(
             (lst for lst in listings if lst.id in scores),
@@ -76,16 +93,26 @@ def build_digest(
             reverse=True,
         )
         unscored = [lst for lst in listings if lst.id not in scores]
-        info.total = len(listings)
         listings = (scored + unscored)[:limit]
+    if len(listings) < len(candidates):
+        info.total = len(candidates)
     path = digest_path(digests_dir, today)
-    path.write_text(render_digest(today, listings, scores, info, shortlist=store.shortlist(today)))
+    path.write_text(
+        render_digest(
+            today,
+            listings,
+            scores,
+            info,
+            shortlist=store.shortlist(today, settings.shortlist.min_rating),
+            soon_days=display.deadline_soon_days,
+        )
+    )
     return path
 
 
-def write_shortlist(store: Store, path: Path, today: date) -> str:
-    """Overwrite `path` with the current shortlist (rated >= 4, unexpired); return the text."""
-    body = render_shortlist(store.shortlist(today)) or "(none yet)"
+def write_shortlist(store: Store, path: Path, today: date, min_rating: int = 4) -> str:
+    """Overwrite `path` with the current shortlist (rated >= `min_rating`, unexpired)."""
+    body = render_shortlist(store.shortlist(today, min_rating)) or "(none yet)"
     text = f"# Shortlist — {today.isoformat()}\n\n{body}\n"
     path.write_text(text)
     return text
