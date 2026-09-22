@@ -11,7 +11,8 @@
   <a href="/" class="brand">jobhunt</a>
   <nav>
     {% for href, label in [("/", "Dashboard"), ("/queue", "Queue"), ("/shortlist", "Shortlist"),
-                           ("/rated", "Rated"), ("/files/profile", "Profile"),
+                           ("/rated", "Rated"), ("/calibration", "Calibration"),
+                           ("/files/profile", "Profile"),
                            ("/files/preferences", "Preferences"), ("/files/cv", "CV"),
                            ("/files/sources", "Sources"), ("/settings", "Settings")] %}
     <a href="{{ href }}"{% if request.url.path == href %} class="active"{% endif %}>{{ label }}</a>

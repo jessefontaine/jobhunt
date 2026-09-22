@@ -4,6 +4,16 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.7.0 — 2026-09-22
+- Rated examples now carry the score they were given, in both the scoring prompt and the
+  preference-learning prompt. Claude is told that where a score and a rating disagree the rating
+  is right, so it can learn what it missed instead of restating what it got right.
+- When a prompt has room for only a few examples, it keeps the ones the scorer got most wrong
+  rather than simply the most recent; listings that were never scored come last.
+- A Calibration page in the browser UI: the correlation, the mean rating per band, and the
+  listings the scoring got most wrong, each with its rating and note box. Over-scored listings
+  name a dealbreaker that was missed; under-scored ones nearly stayed hidden.
+
 ## 0.6.0 — 2026-09-22
 - New `jobhunt calibration`: pairs every rating with the score that listing got and reports the
   Spearman rank correlation between them, plus the mean rating per score band.

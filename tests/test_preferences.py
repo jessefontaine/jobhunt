@@ -4,8 +4,14 @@ import pathlib
 import pytest
 
 from jobhunt.config import Paths
-from jobhunt.models import Listing, Rating
-from jobhunt.ratings import learned_at, regenerate_preferences, split_preferences
+from jobhunt.models import Listing, Rating, Score
+from jobhunt.ratings import (
+    learned_at,
+    preferences_instructions,
+    regenerate_preferences,
+    split_preferences,
+)
+from jobhunt.settings import PreferenceSettings
 from jobhunt.store import Store
 
 PREFS = """# Preferences
@@ -284,3 +290,20 @@ def test_preferences_prompt_asks_for_overlapping_rules_to_be_merged(env):
     regenerate_preferences(paths, store, runner, "m")
     assert "Merge" in seen["prompt"]
     assert "promote" in seen["prompt"].lower()
+
+
+def test_preferences_prompt_shows_what_claude_scored_each_rated_listing(env):
+    paths, store = env
+    store.save_scores([Score(listing_id=store.find_by_url("u1").id, score=95, model="m")])
+    seen = {}
+
+    def runner(prompt, model, schema):
+        seen["prompt"] = prompt
+        return json.dumps({"structured_output": {"rules": ["r"]}})
+
+    regenerate_preferences(paths, store, runner, "sonnet")
+    assert "you scored 95" in seen["prompt"]
+
+
+def test_preferences_instructions_say_what_to_do_with_those_scores():
+    assert "you scored" in preferences_instructions(PreferenceSettings())

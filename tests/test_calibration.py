@@ -6,7 +6,14 @@ from datetime import date
 
 import pytest
 
-from jobhunt.calibration import agreement, render, spearman
+from jobhunt.calibration import (
+    agreement,
+    expected_rating,
+    render,
+    spearman,
+    surprise,
+)
+from jobhunt.models import Score
 from jobhunt.ratings import record_rating
 
 
@@ -141,3 +148,67 @@ def test_calibration_of_a_workspace_with_no_ratings_is_empty(ws):
     result = ws.calibration()
 
     assert (result.n, result.rho, result.unscored) == (0, None, 0)
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"), [(92, 5), (70, 4), (50, 3), (20, 2), (5, 1), (100, 5), (0, 1)]
+)
+def test_expected_rating_follows_the_bands_the_scoring_guide_describes(score, expected):
+    assert expected_rating(score) == expected
+
+
+def test_surprise_is_zero_when_the_band_matches_the_rating():
+    assert surprise(90, 5) == 0
+
+
+def test_surprise_grows_with_the_gap_between_band_and_rating():
+    assert surprise(90, 1) == 4
+    assert surprise(90, 4) == 1
+    assert surprise(10, 5) == 4
+
+
+def _scored_rating(ws, url, score, rating):
+    lst = ws.store.find_by_url(url)
+    ws.store.save_scores([Score(listing_id=lst.id, score=score, model="m")])
+    record_rating(ws.store, ws.paths.ratings, lst.id, rating, "", "d.md")
+    return lst
+
+
+def test_disagreements_put_the_listing_it_got_most_wrong_first(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    near = _scored_rating(ws, "https://x.org/1", 90, 3)  # predicted 5, rated 3 — off by 2
+    far = _scored_rating(ws, "https://x.org/3", 20, 5)  # predicted 2, rated 5 — off by 3
+
+    assert [d.listing.id for d in ws.disagreements()] == [far.id, near.id]
+
+
+def test_disagreements_ignore_a_gap_too_small_to_mean_anything(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    _scored_rating(ws, "https://x.org/1", 90, 4)  # predicted 5, rated 4 — noise
+
+    assert ws.disagreements() == []
+
+
+def test_disagreements_skip_ratings_on_listings_that_were_never_scored(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    lst = ws.store.find_by_url("https://x.org/1")
+    record_rating(ws.store, ws.paths.ratings, lst.id, 5, "", "d.md")
+
+    assert ws.disagreements() == []
+
+
+def test_disagreements_stop_at_the_limit(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    _scored_rating(ws, "https://x.org/1", 90, 1)
+    _scored_rating(ws, "https://x.org/3", 90, 2)
+
+    assert len(ws.disagreements(limit=1)) == 1
+
+
+def test_a_disagreement_carries_what_each_side_said(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    _scored_rating(ws, "https://x.org/1", 92, 1)
+
+    only = ws.disagreements()[0]
+    assert (only.score.score, only.rating.rating, only.surprise) == (92, 1, 4)
+    assert only.over_scored is True

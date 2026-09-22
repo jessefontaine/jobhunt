@@ -61,7 +61,15 @@ That only affects listings scored from then on — after editing your profile or
 
 To see whether the scores are worth trusting, `uv run jobhunt calibration` ranks Claude's
 scores against your ratings (Spearman) and prints the mean rating per score band — which is
-also how you find the right shortlist threshold. It needs ~10 ratings to mean anything.
+also how you find the right shortlist threshold. It needs ~10 ratings to mean anything. The
+**Calibration** page in the UI shows the same thing and adds the listings the scoring got most
+wrong.
+
+Those disagreements feed back in on their own: every rated example shown to the scorer and to
+the preference learner now carries the score it was given, and the examples the scorer got most
+wrong are the ones kept when a prompt has room for only a few. Claude is told the rating is
+right where the two disagree, so it learns what it missed rather than re-reading what it already
+got right.
 
 | rating | meaning |
 |--------|---------|
@@ -99,6 +107,10 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 - **Shortlist** and **Rated** — what you rated 4–5 that is still open; everything you rated,
   where you change an old rating. Ratings below the threshold drop off the Rated page once they
   are older than the window (`/rated?all=1` shows them; nothing is ever deleted).
+- **Calibration** — the same report `jobhunt calibration` prints, plus the listings the scoring
+  got most wrong: over-scored ones name a dealbreaker it keeps missing, under-scored ones are the
+  roles the threshold nearly hid from you. Each comes with its rating and note box, and the note
+  is what the next `learn` run reads.
 - **Profile / Preferences / CV / Sources** — edit the workspace files in place
   (`sources.yaml` is validated before saving).
 - **Feedback** — *Report a bug* / *Suggest a feature* open a prefilled issue form on GitHub

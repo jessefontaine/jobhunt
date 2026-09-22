@@ -18,6 +18,19 @@ BANDS: tuple[tuple[str, int, int], ...] = (
 ENOUGH_RATINGS = 10
 
 
+def expected_rating(score: int) -> int:
+    """The rating this score predicts, by the band it falls in: apply → 5 … irrelevant → 1."""
+    for n, (_, low, high) in enumerate(BANDS):
+        if low <= score <= high:
+            return len(BANDS) - n
+    return 5 if score > BANDS[0][2] else 1
+
+
+def surprise(score: int, rating: int) -> int:
+    """How far the rating landed from the band's prediction — 0 when they agree, 4 at worst."""
+    return abs(expected_rating(score) - rating)
+
+
 def _ranks(values: list[float]) -> list[float]:
     """Ranks from 1 up, tied values sharing the average of the ranks they span."""
     order = sorted(range(len(values)), key=lambda i: values[i])
