@@ -84,7 +84,7 @@ def create_app(
         return {
             "open": len(candidates),
             "unscored": sum(1 for lst in candidates if lst.id not in scores),
-            "shortlist": len(store.shortlist(today)),
+            "shortlist": len(store.shortlist(today, ws.settings.shortlist.min_rating)),
             "listings": store.count_listings(),
             "ratings": len(store.rated_ids()),
             "since_learned": store.ratings_since(learned),
@@ -269,8 +269,9 @@ def create_app(
     @app.get("/shortlist", response_class=HTMLResponse)
     def shortlist(request: Request):
         store, today = ws.store, date.today()
-        rows = store.shortlist(today)
-        pipeline.write_shortlist(store, ws.paths.shortlist, today)
+        min_rating = ws.settings.shortlist.min_rating
+        rows = store.shortlist(today, min_rating)
+        pipeline.write_shortlist(store, ws.paths.shortlist, today, min_rating)
         scores = store.get_scores([lst.id for lst, _ in rows])
         items = [
             _item(lst, scores.get(lst.id), rating, today, ws.settings.display)
@@ -309,7 +310,9 @@ def create_app(
             return JSONResponse({"error": "no such listing"}, status_code=404)
         note = note.strip()
         saved = record_rating(store, ws.paths.ratings, listing_id, rating, note, digest="web")
-        pipeline.write_shortlist(store, ws.paths.shortlist, date.today())
+        pipeline.write_shortlist(
+            store, ws.paths.shortlist, date.today(), ws.settings.shortlist.min_rating
+        )
         return {
             "listing_id": listing_id,
             "rating": rating,

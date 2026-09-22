@@ -490,3 +490,15 @@ def test_cards_flag_a_deadline_that_is_close(ws):
     fetched(ws)
     ws.settings.display.deadline_soon_days = 36500  # every future deadline counts as soon
     assert "closes in" in web(ws, updater(ws)).get("/queue").text
+
+
+def test_shortlist_page_and_count_follow_the_rating_threshold(ws):
+    from jobhunt.models import Rating
+
+    fetched(ws)
+    ws.store.save_rating(Rating(listing_id=listing_id(ws, "RA fMRI"), rating=3, digest="web"))
+    ws.settings.shortlist.min_rating = 3
+    client = web(ws, updater(ws))
+    assert "RA fMRI" in client.get("/shortlist").text
+    assert "<b>1</b> on the shortlist" in client.get("/").text
+    assert "RA fMRI" in ws.paths.shortlist.read_text()
