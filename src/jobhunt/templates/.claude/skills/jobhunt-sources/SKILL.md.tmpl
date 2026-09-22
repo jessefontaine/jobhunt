@@ -1,0 +1,91 @@
+---
+name: jobhunt-sources
+description: Use when the user wants to add a job site, university or company careers page to this jobhunt workspace, or when a source stops returning listings and its selectors need fixing (config/sources.yaml, the `pages` source).
+---
+
+# Adding a source to this workspace
+
+The engine ships a scraper per big site (AcademicTransfer, EURAXESS, Indeed, LinkedIn) plus
+`pages`: a generic, selector-driven scraper you configure per site in `config/sources.yaml`.
+Almost every "can you also watch X?" is a new `pages` entry — no engine code, nothing to
+install. Never edit the engine inside `.venv`: it is overwritten by the next update.
+
+## 1. Look at the page first
+
+Fetch the vacancy listing page and read its markup. You need one repeating element per
+vacancy, and inside it the title and the link. Check what is actually in the HTML the server
+returns, not what the rendered page shows — if the vacancies only appear after JavaScript
+runs, no selector will find them (go to step 4).
+
+Confirm the site is fine with being read: obey `robots.txt`, and never work around a 403, a
+CAPTCHA or a sign-in wall. If the site blocks the fetch, that is a step-4 entry too.
+
+## 2. Write the entry
+
+Under `sources.pages.pages` in `config/sources.yaml`:
+
+```yaml
+      - name: Netherlands Institute for Neuroscience   # shown as the source in digests
+        url: https://nin.nl/vacancies/
+        item: article.vacancies-big-card   # one element per vacancy (required)
+        title: h3                          # optional; default: the item's whole text
+        link: a.overlay-link               # optional; default: the first <a> in the item
+        location: .location                # optional
+        deadline: .deadline                # optional; a date is parsed out of the text
+        summary: p                         # optional
+        allow_empty: true                  # optional; "no open positions" is not an error
+```
+
+Prefer a class that describes the vacancy (`article.vacancy`) over layout classes or
+`:nth-child`, which break on the next redesign. Relative links are resolved against `url`.
+
+Sites that already post everything on AcademicTransfer (Dutch universities and UMCs) are
+usually not worth adding twice.
+
+## 3. Verify it
+
+```bash
+uv run jobhunt fetch --source pages
+```
+
+Read the output: `pages: N new of M seen`. If M is 0 the `item` selector matched nothing —
+go back and look at the markup again. Then check the listings look right:
+
+```bash
+uv run jobhunt check   # or just open the Queue in `uv run jobhunt serve`
+```
+
+A wrong `title` or `link` selector shows up immediately as junk titles or links that go to
+the listing page instead of the vacancy.
+
+## 4. When a selector cannot work
+
+JavaScript-rendered pages, sites that block scrapers, or a page with no list markup at all:
+
+```yaml
+      - name: Donders Institute vacancies
+        url: https://www.ru.nl/en/working-at/vacancies
+        manual: true       # no scraping; the link goes in the digest header to check by hand
+```
+
+The user then opens it themselves, and can paste anything worth keeping back in:
+`uv run jobhunt add <url>` stores and scores it like any fetched listing.
+
+## 5. A site that needs a real parser
+
+An API, pagination, or a search form that a selector list cannot express belongs in the
+engine as a new source module — that is a change to the engine repository, not to this
+workspace. Open an issue (the dashboard's *Suggest a feature* link, or
+https://github.com/jessefontaine/jobhunt/issues) describing the site and what it lists.
+
+## Reference
+
+| Task | Command |
+|------|---------|
+| List known sources and whether they are enabled | `uv run jobhunt sources` |
+| Fetch one source only | `uv run jobhunt fetch --source <name>` |
+| Edit the config in the browser | `uv run jobhunt serve` → Sources |
+
+Enable or disable a whole source with `enabled: true/false` under its name in
+`config/sources.yaml`. Queries for the big sites live there too — adding a keyword to
+`academictransfer.queries` is often a better first move than adding a new site.

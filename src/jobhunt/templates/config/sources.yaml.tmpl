@@ -1,19 +1,14 @@
-# jobhunt workspace config. Edit the queries to match what you are looking for; the source
-# set is Netherlands-centric (see the engine README for what each source does).
-# Add a source: write src/jobhunt/sources/<name>.py in the engine, register it in
-# sources/__init__.py, then enable it here.
+# jobhunt sources: WHERE to look. Edit the queries to match what you are looking for; the
+# source set is Netherlands-centric (see the engine README for what each source does).
+# How results are shown and how the pipeline behaves is config/settings.yaml.
+#
+# Adding a site: most sites need no engine code — add an entry under `pages:` below. Open this
+# workspace in Claude Code and ask for a site by name (the jobhunt-sources skill walks the
+# markup and writes the entry), or copy one of the examples.
 
 # Optional: put an email here and scrapers identify themselves with it in the User-Agent
 # (polite, and lets a site contact you instead of blocking you).
 # contact: you@example.org
-
-scoring:
-  model: sonnet        # passed to `claude -p --model`
-  batch_size: 10       # listings per Claude call
-  examples: 20         # rated listings included as few-shot examples
-
-digest:
-  limit: 60            # entries per digest, best scores first (the rest wait for the next run)
 
 sources:
   academictransfer:

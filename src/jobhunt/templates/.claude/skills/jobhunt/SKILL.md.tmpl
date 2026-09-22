@@ -1,12 +1,13 @@
 ---
 name: jobhunt
-description: Use when the user wants to check for new job listings, see their job digest, or rate/record feedback on listings in this workspace (the `jobhunt` CLI, digests/, ratings).
+description: Use when the user wants to check for new job listings, see their job digest, rate or discuss listings, add a role they found by a link, or correct the preferences the engine inferred about them (the `jobhunt` CLI, digests/, ratings, profile/preferences.md).
 ---
 
 # jobhunt
 
-Run the pipeline through the CLI and rate through the digest file. Never score or rank listings
-yourself — `jobhunt score` does that, so results stay reproducible and the ratings loop stays intact.
+Run the pipeline through the CLI and rate through the digest file or in chat. Never score or
+rank listings yourself — `jobhunt score` does that, so results stay reproducible and the
+ratings loop stays intact.
 
 ## Commands (run from the workspace root)
 
@@ -15,11 +16,19 @@ yourself — `jobhunt score` does that, so results stay reproducible and the rat
 | Full run: fetch → score → digest | `uv run jobhunt check` (takes minutes: polite 1 req/s scraping) |
 | Only re-render the digest | `uv run jobhunt digest` |
 | Show what the user rated 4–5 that is still open | `uv run jobhunt shortlist` (also rewrites `shortlist.md`) |
+| Everything known about one listing | `uv run jobhunt show <url-or-id>` |
+| Add a role from a link | `uv run jobhunt add <url>` (fetches, stores, scores it) |
 | Change an earlier rating | edit the `rating:` line in the digest it was rated in, then `uv run jobhunt rate digests/<that-file>.md` |
 | Re-score everything after the user edited `profile/profile.md` or `profile/preferences.md` | `uv run jobhunt check --rescore` (replaces old scores; one Claude call per batch of 10, so mention it takes a while) |
 | Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |
-| Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` alphabetically — don't trust `ls | tail`) |
-| Browser UI (buttons, rating queue, editors) | `uv run jobhunt serve` — runs until Ctrl-C, so start it in a terminal the user controls, not from a tool call that waits for exit |
+| Regenerate the learned preferences on their own | `uv run jobhunt learn` |
+| Newest digest file | highest `digests/YYYY-MM-DD[-N].md` by date, then N (`-2` sorts *before* `.md` — don't trust `ls | tail`) |
+| Browser UI (buttons, rating queue, editors, settings) | `uv run jobhunt serve` — runs until Ctrl-C, so start it in a terminal the user controls, not from a tool call that waits for exit |
+| Why no update banner appeared | `uv run jobhunt update --check` |
+
+Settings (theme, score range, digest size, what the Rated page hides, update checks) live in
+`config/settings.yaml` and on the UI's Settings page. Adding a *site* is a different job:
+that is `config/sources.yaml` and the `jobhunt-sources` skill.
 
 ## Presenting a digest
 
@@ -30,6 +39,35 @@ Read the newest digest. If it has a `## Shortlist` section (listings the user al
 Mention the header's `Source errors` / `Manual:` links if present. Skip `## Unscored` entries
 unless asked. Shortlist lines have no `rating:` field — they are not for rating again.
 
+## Talking about roles in chat
+
+When the user wants to think out loud about a role rather than rate it:
+
+1. Read `profile/profile.md`, `profile/preferences.md` and `docs/cv.md` first — the answer has
+   to be about *this* person, not about the role in general. Say which constraint or
+   preference you are leaning on.
+2. Get the engine's own verdict with `uv run jobhunt show <url-or-id>`: its score, the one-line
+   **Why**, the **Concerns**, and the rating if they already gave one. Use that as the starting
+   point and disagree with it explicitly if you do — don't silently substitute your own score.
+3. Answer the question they asked (is this worth applying to, what would the application need,
+   what is the weakest part of the fit). Name the specific overlap with their CV, and the
+   specific risk, rather than a general verdict.
+4. If they reach a view worth keeping — "I would take a teaching load for the right lab" —
+   offer to write it into `## Manual` in `profile/preferences.md` (see below). Rating it in the
+   queue is the other durable option; both beat leaving it in the chat.
+
+## A link the user pastes
+
+`uv run jobhunt add <url>` fetches the page, stores it under the `manual` source and scores it
+with one Claude call, so it joins the queue, the digest and the ratings loop like a fetched
+listing. Report the score and the **Why** it prints.
+
+If the command reports that the site returned 403 or a sign-in wall, **do not** try to work
+around it. Ask the user to open the page and paste the text, then:
+`uv run jobhunt add <url> --title "…" --employer "…" --description "…"`.
+
+For a whole site the user wants watched from now on, use the `jobhunt-sources` skill instead.
+
 ## Recording ratings the user gives in chat
 
 Each digest entry has `<!-- id: … -->`, `rating:` and `note:` lines. For each rating:
@@ -39,11 +77,37 @@ Each digest entry has `<!-- id: … -->`, `rating:` and `note:` lines. For each 
 
 Scale: 5 apply · 4 strong · 3 maybe · 2 not really · 1 irrelevant.
 
+## Re-aligning the preferences the engine inferred
+
+`## Learned` and `## Specifics` in `profile/preferences.md` are written by the engine from the
+ratings. They are a guess, and the user may disagree with one. **Never edit those two sections
+yourself** — the next `jobhunt rate` / `jobhunt learn` regenerates them and your edit is gone.
+
+The section that outranks them is `## Manual`: the user's own rules, which the engine is told
+never to contradict. So a disagreement is resolved by writing a Manual rule:
+
+1. Read the file and quote the rule they are reacting to, verbatim.
+2. Ask what is actually true instead — one or two questions, not an interview. "Never
+   Rotterdam" might mean "not Rotterdam for a 4-year PhD" or "not unless it is this one lab".
+3. Draft one sentence in their words, as specific as their answer was, and show it to them
+   before writing anything.
+4. On their yes, add it under `## Manual` (keep the existing bullets; edit one in place if it
+   is the same rule refined) and leave every other section untouched.
+5. Run `uv run jobhunt learn` so the generated sections are rewritten with the new Manual rule
+   as fixed context, and report what changed in `## Learned` / `## Specifics`.
+6. If scores should reflect it now, offer `uv run jobhunt check --rescore` and say that it
+   costs one Claude call per 10 open listings.
+
+A rule they wrote is also the right home for something the ratings cannot express: "I will
+move for a lab I care about, but not for a job I merely like."
+
 ## Known failure modes
 
 | Output | Meaning / what to do |
 |--------|----------------------|
-| `preferences: failed` or scoring errors mentioning `OAuth session expired` / `authenticate` | The shell `claude` CLI is logged out. Ratings are still saved. Tell the user to run `claude login` in a terminal, then `uv run jobhunt rate --force` (or `uv run jobhunt score`). Don't call `claude -p` yourself to diagnose. |
+| `preferences: failed` or scoring errors mentioning `OAuth session expired` / `authenticate` | The shell `claude` CLI is logged out. Ratings are still saved. Tell the user to run `claude login` in a terminal, then `uv run jobhunt learn` (or `uv run jobhunt score`). Don't call `claude -p` yourself to diagnose. |
 | `preferences: skipped (fewer than 3 new ratings…)` | Normal. Nothing to do unless the user wants `--force`. |
 | `Source errors: … 429` / `502` | Transient site rate-limits; the run continued. Mention it, don't retry. |
 | `Manual: [Indeed: …]` links | Indeed blocks scrapers; these are saved searches for the user to open. |
+| `… returned 403 …` from `jobhunt add` | The site refuses scrapers. Ask for the text and pass `--title/--employer/--description`; never work around it. |
+| `no update check: …` | The engine cannot check GitHub for updates. The message says why (a development checkout, a commit pin, or an install that did not come from git). |

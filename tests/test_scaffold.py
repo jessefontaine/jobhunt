@@ -10,7 +10,9 @@ EXPECTED = {
     "CLAUDE.md",
     ".gitignore",
     ".claude/skills/jobhunt/SKILL.md",
+    ".claude/skills/jobhunt-sources/SKILL.md",
     "config/sources.yaml",
+    "config/settings.yaml",
     "profile/profile.md",
     "profile/preferences.md",
     "docs/.gitkeep",
@@ -66,3 +68,23 @@ def test_no_template_has_placeholders_except_pyproject():
 def test_extract_cv_script_takes_the_pdf_path_as_an_argument():
     # guards against reverting to a hardcoded PDF name
     assert "$1" in template_files()["scripts/extract-cv.sh"].read_text()
+
+
+def test_the_new_workspace_settings_file_loads():
+    from jobhunt.settings import parse_settings
+
+    settings = parse_settings(template_files()["config/settings.yaml"].read_text())
+    assert settings.display.theme == "auto"
+
+
+def test_the_sources_skill_never_tells_claude_to_patch_the_engine():
+    text = template_files()[".claude/skills/jobhunt-sources/SKILL.md"].read_text()
+    assert "pages:" in text  # the way a user adds a site without engine code
+    assert ".venv" in text  # …and the warning not to edit the installed engine
+
+
+def test_the_workspace_skill_covers_talking_about_roles_and_preferences():
+    text = template_files()[".claude/skills/jobhunt/SKILL.md"].read_text()
+    assert "jobhunt add" in text
+    assert "jobhunt show" in text
+    assert "## Manual" in text
