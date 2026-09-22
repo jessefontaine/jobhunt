@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if settings.display.theme != "auto" %} data-theme="{{ settings.display.theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,10 +13,15 @@
     {% for href, label in [("/", "Dashboard"), ("/queue", "Queue"), ("/shortlist", "Shortlist"),
                            ("/rated", "Rated"), ("/files/profile", "Profile"),
                            ("/files/preferences", "Preferences"), ("/files/cv", "CV"),
-                           ("/files/sources", "Sources")] %}
+                           ("/files/sources", "Sources"), ("/settings", "Settings")] %}
     <a href="{{ href }}"{% if request.url.path == href %} class="active"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
+  <form method="post" action="/settings/theme" class="theme">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <button type="submit" title="Theme: {{ settings.display.theme }} (click to change)">
+      {{ {"auto": "◐ auto", "light": "☀ light", "dark": "☾ dark"}[settings.display.theme] }}</button>
+  </form>
 </header>
 {% if update %}
 <section class="update">

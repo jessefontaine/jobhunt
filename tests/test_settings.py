@@ -87,3 +87,27 @@ def test_rated_hides_only_low_ratings_that_are_also_old():
 def test_hide_below_1_keeps_everything():
     rated = parse_settings("rated:\n  hide_below: 1\n  hide_after_days: 0\n").rated
     assert rated.hidden(1, datetime(2020, 1, 1), datetime(2026, 9, 22)) is False
+
+
+def test_settings_from_form_updates_only_what_the_form_carries():
+    from jobhunt.settings import settings_from_form
+
+    current = Settings()
+    current.display.theme = "dark"
+    updated = settings_from_form({"digest.limit": "5"}, current)
+    assert updated.digest.limit == 5
+    assert updated.display.theme == "dark"  # untouched fields keep their value
+
+
+def test_settings_from_form_reads_a_missing_checkbox_as_off():
+    from jobhunt.settings import settings_from_form
+
+    assert settings_from_form({}, Settings()).updates.check is False
+    assert settings_from_form({"updates.check": "1"}, Settings()).updates.check is True
+
+
+def test_settings_from_form_rejects_an_impossible_value():
+    from jobhunt.settings import settings_from_form
+
+    with pytest.raises(ConfigError):
+        settings_from_form({"display.max_score": "500"}, Settings())

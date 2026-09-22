@@ -7,7 +7,7 @@
     {% if score %}<span class="score">score {{ score.score }}</span> · {{ score.role_type }} · {% endif %}
     {% if lst.location %}{{ lst.location }} · {% endif %}
     {% if lst.posted %}posted {{ lst.posted }} · {% endif %}
-    {% if lst.deadline %}<span{% if item.expired %} class="expired"{% endif %}>deadline {{ lst.deadline }}{% if item.expired %} (expired){% endif %}</span> · {% endif %}
+    {% if lst.deadline %}<span{% if item.expired %} class="expired"{% elif item.soon %} class="soon"{% endif %}>deadline {{ lst.deadline }}{% if item.expired %} (expired){% elif item.soon %} (closes {% if item.days == 0 %}today{% else %}in {{ item.days }} day{{ "s" if item.days != 1 }}{% endif %}){% endif %}</span> · {% endif %}
     {{ lst.source }}
   </p>
   {% if score %}

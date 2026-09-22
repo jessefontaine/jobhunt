@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Settings · jobhunt{% endblock %}
+{% block content %}
+<h1>Settings <small class="muted"><code>config/settings.yaml</code></small></h1>
+<p class="muted">Where to look is in <a href="/files/sources">Sources</a>; this is everything else.
+   The file is yours to edit by hand too — saving here rewrites it.</p>
+<form method="post" action="/settings" class="settings">
+
+<h2>Display</h2>
+<label>Theme
+  <select name="display.theme">
+    {% for t in themes %}<option value="{{ t }}"{% if settings.display.theme == t %} selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <small class="when">auto follows your system. The toggle in the header changes this too.</small>
+</label>
+<label>Show scores from
+  <input type="number" name="display.min_score" min="0" max="100" value="{{ settings.display.min_score }}">
+  to
+  <input type="number" name="display.max_score" min="0" max="100" value="{{ settings.display.max_score }}">
+  <small class="when">Applies to the Queue and to new digests. Above 0 also hides unscored
+     listings, since nothing is known about them yet. The dashboard counts stay absolute.</small>
+</label>
+<label>Queue order
+  <select name="display.sort">
+    {% for s in sorts %}<option value="{{ s }}"{% if settings.display.sort == s %} selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  <small class="when">Unscored listings always come last.</small>
+</label>
+<label>Mark deadlines closing within
+  <input type="number" name="display.deadline_soon_days" min="0" max="365" value="{{ settings.display.deadline_soon_days }}"> days
+  <small class="when">Flags them on cards and in the digest. 0 turns the marker off.</small>
+</label>
+
+<h2>Pipeline</h2>
+<label>Entries per digest
+  <input type="number" name="digest.limit" min="1" max="500" value="{{ settings.digest.limit }}">
+  <small class="when">Best scores first; the rest wait for the next run.</small>
+</label>
+<label>Scoring model
+  <input type="text" name="scoring.model" value="{{ settings.scoring.model }}">
+  <small class="when">Passed to <code>claude -p --model</code>.</small>
+</label>
+<label>Listings per Claude call
+  <input type="number" name="scoring.batch_size" min="1" max="50" value="{{ settings.scoring.batch_size }}">
+</label>
+<label>Rated examples in the prompt
+  <input type="number" name="scoring.examples" min="0" max="200" value="{{ settings.scoring.examples }}">
+  <small class="when">How many of your ratings the scorer sees as examples.</small>
+</label>
+<label>Shortlist from rating
+  <input type="number" name="shortlist.min_rating" min="1" max="5" value="{{ settings.shortlist.min_rating }}">
+  <small class="when">Ratings at or above this land on the Shortlist and in <code>shortlist.md</code>.</small>
+</label>
+
+<h2>Rated list</h2>
+<label>Hide ratings below
+  <input type="number" name="rated.hide_below" min="1" max="5" value="{{ settings.rated.hide_below }}">
+  once they are older than
+  <input type="number" name="rated.hide_after_days" min="0" max="3650" value="{{ settings.rated.hide_after_days }}"> days
+  <small class="when">Both have to be true, so a fresh 1 stays visible while you might revisit
+     it and an old one drops off. 1 keeps everything. Nothing is deleted: hidden ratings still
+     teach your preferences, and <code>data/ratings.jsonl</code> keeps every one of them.</small>
+</label>
+
+<h2>Preferences</h2>
+<label>At most
+  <input type="number" name="preferences.max_rules" min="1" max="50" value="{{ settings.preferences.max_rules }}"> learned rules and
+  <input type="number" name="preferences.max_specifics" min="0" max="50" value="{{ settings.preferences.max_specifics }}"> specifics,
+  each under
+  <input type="number" name="preferences.max_words_per_rule" min="5" max="100" value="{{ settings.preferences.max_words_per_rule }}"> words
+  <small class="when">Keeps <em>Regenerate preferences</em> condensing instead of piling up as
+     you rate more. Your own <code>## Manual</code> rules are never counted or touched.</small>
+</label>
+
+<h2>Updates</h2>
+<label><input type="checkbox" name="updates.check" value="1"{% if settings.updates.check %} checked{% endif %}>
+  Check GitHub for a newer engine
+</label>
+<label>Check every
+  <input type="number" name="updates.interval_minutes" min="1" max="1440" value="{{ settings.updates.interval_minutes }}"> minutes
+  <small class="when">Takes effect the next time the server starts. The dashboard says what the
+     last check did.</small>
+</label>
+
+<p><button type="submit">Save</button></p>
+</form>
+{% endblock %}

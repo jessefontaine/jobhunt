@@ -11,6 +11,14 @@
 {% else %}
 <p class="muted">Everything you have rated, most recent first. Change a rating here.</p>
 {% endif %}
+{% if hidden and mode == "queue" %}
+<p class="muted">{{ hidden }} hidden by your score filter
+   (<a href="/settings">Settings</a>: {{ settings.display.min_score }}–{{ settings.display.max_score }}).</p>
+{% elif hidden and mode == "rated" %}
+<p class="muted">{{ hidden }} hidden: rated below {{ settings.rated.hide_below }} and older than
+   {{ settings.rated.hide_after_days }} days (<a href="/rated?all=1">show them</a> ·
+   <a href="/settings">Settings</a>).</p>
+{% endif %}
 {% for heading, items in sections %}
   {% if heading and items %}<h2>{{ heading }}</h2>{% endif %}
   {% for item in items %}{{ card(item, labels) }}{% endfor %}

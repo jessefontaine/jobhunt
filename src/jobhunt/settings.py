@@ -7,6 +7,7 @@ digest blocks are seeded from sources.yaml until the file is saved for the first
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -120,3 +121,33 @@ def save_settings(paths: Paths, settings: Settings) -> Path:
     paths.settings_yaml.parent.mkdir(parents=True, exist_ok=True)
     paths.settings_yaml.write_text(HEADER + body)
     return paths.settings_yaml
+
+
+def settings_from_form(form: Mapping[str, str], current: Settings) -> Settings:
+    """Apply a settings form to `current`. Keys are `section.field` (`display.theme`).
+
+    A field the form does not carry keeps its value, except a checkbox: HTML omits an
+    unticked one, so a boolean the form leaves out is False.
+    """
+    data = current.model_dump(mode="json")
+    for section, values in data.items():
+        for key, value in values.items():
+            name = f"{section}.{key}"
+            if isinstance(value, bool):
+                values[key] = name in form
+            elif name in form:
+                values[key] = form[name]
+    try:
+        return Settings(**data)
+    except (ValidationError, TypeError) as exc:
+        raise ConfigError(_first_message(exc)) from exc
+
+
+def _first_message(exc: Exception) -> str:
+    """The first pydantic complaint, as `display.max_score: less than or equal to 100`."""
+    errors = getattr(exc, "errors", None)
+    if not callable(errors) or not (found := errors()):
+        return str(exc)
+    first = found[0]
+    where = ".".join(str(part) for part in first.get("loc", ()))
+    return f"{where}: {first.get('msg', '')}".strip(": ")

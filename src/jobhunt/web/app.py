@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import uuid
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -19,7 +19,9 @@ from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import learned_at, record_rating
+from jobhunt.settings import DisplaySettings, save_settings, settings_from_form
 from jobhunt.sources import list_sources
+from jobhunt.sources.manual import ManualFetchError
 from jobhunt.update import EngineInstall, Updater
 from jobhunt.web.jobs import JobBusy, JobRunner, Progress
 from jobhunt.workspace import Workspace
@@ -33,9 +35,23 @@ RESCORE_HINT = (
 )
 
 
-def _item(lst: Listing, score: Score | None, rating: Rating | None, today: date) -> dict:
+def _item(
+    lst: Listing,
+    score: Score | None,
+    rating: Rating | None,
+    today: date,
+    display: DisplaySettings | None = None,
+) -> dict:
     """One listing card's worth of template context."""
-    return {"listing": lst, "score": score, "rating": rating, "expired": lst.is_expired(today)}
+    display = display or DisplaySettings()
+    return {
+        "listing": lst,
+        "score": score,
+        "rating": rating,
+        "expired": lst.is_expired(today),
+        "soon": display.closing_soon(lst.deadline, today),
+        "days": (lst.deadline - today).days if lst.deadline else None,
+    }
 
 
 def create_app(
@@ -51,9 +67,10 @@ def create_app(
     def render(request: Request, template: str, status_code: int = 200, **context):
         context.setdefault("error", None)
         context.setdefault("notice", None)
-        # every page: the update banner and whether its button may be pressed
+        # every page: the update banner, the theme, and whether the button may be pressed
         context["update"] = updater.available
         context["version"] = updater.version
+        context["settings"] = ws.settings
         context["busy"] = bool(jobs.current and jobs.current.running)
         return templates.TemplateResponse(request, template, context, status_code=status_code)
 
@@ -85,6 +102,7 @@ def create_app(
             "boot": boot,
             "changelog": updater.changelog,
             "install": updater.install,
+            "status": updater.status(),
             "feedback": {
                 kind: issue_url(kind, updater.install, updater.version)
                 for kind in ("bug", "feature")
@@ -142,6 +160,52 @@ def create_app(
     def action_update(request: Request):
         return start(request, "update", updater.update)
 
+    @app.post("/actions/update-check")
+    def action_update_check(request: Request):
+        def run(progress: Progress) -> None:
+            if reason := updater.disabled_reason():
+                progress(f"no update check: {reason}")
+                return
+            status = updater.status()
+            progress(f"checking {status.tracking}…")
+            available = updater.check()
+            if error := updater.status().error:
+                progress(f"check failed: {error}")
+            elif available is None:
+                progress(f"up to date: jobhunt {updater.version}")
+            else:
+                progress(f"available: jobhunt {available.version} ({available.commit[:7]})")
+
+        return start(request, "update check", run)
+
+    @app.post("/actions/add")
+    def action_add(
+        request: Request,
+        url: str = Form(""),
+        title: str = Form(""),
+        employer: str = Form(""),
+        no_score: bool = Form(False),
+    ):
+        if not url.strip():
+            ctx = dashboard_context(error="paste a link to a vacancy page first")
+            return render(request, "dashboard.html", status_code=400, **ctx)
+
+        def run(progress: Progress) -> None:
+            try:
+                _, score = ws.add(
+                    url.strip(),
+                    title=title.strip(),
+                    employer=employer.strip(),
+                    score=not no_score,
+                    progress=progress,
+                )
+            except ManualFetchError as exc:
+                raise RuntimeError(str(exc)) from None
+            if score is not None:
+                progress(f"score {score.score} ({score.role_type}) — {score.why}")
+
+        return start(request, "add", run)
+
     @app.get("/health")
     def health():
         return {"version": updater.version, "boot": boot}
@@ -155,7 +219,9 @@ def create_app(
 
     # -- listing pages -------------------------------------------------------
 
-    def listing_page(request: Request, title: str, mode: str, sections: list) -> HTMLResponse:
+    def listing_page(
+        request: Request, title: str, mode: str, sections: list, hidden: int = 0
+    ) -> HTMLResponse:
         total = sum(len(items) for _, items in sections)
         return render(
             request,
@@ -164,25 +230,41 @@ def create_app(
             mode=mode,
             sections=sections,
             total=total,
+            hidden=hidden,
             labels=RATING_LABELS,
         )
+
+    def _sorted(listings: list[Listing], scores: dict[str, Score]) -> list[Listing]:
+        """Order the scored part of the queue the way the settings ask for."""
+        far = date.max
+        match ws.settings.display.sort:
+            case "deadline":
+                return sorted(listings, key=lambda lst: lst.deadline or far)
+            case "newest":
+                return sorted(listings, key=lambda lst: lst.fetched_at, reverse=True)
+            case _:
+                return sorted(listings, key=lambda lst: scores[lst.id].score, reverse=True)
 
     @app.get("/queue", response_class=HTMLResponse)
     def queue(request: Request):
         store, today = ws.store, date.today()
-        listings = store.candidate_listings(today)
-        scores = store.get_scores([lst.id for lst in listings])
-        scored = sorted(
-            (lst for lst in listings if lst.id in scores),
-            key=lambda lst: scores[lst.id].score,
-            reverse=True,
-        )
+        display = ws.settings.display
+        candidates = store.candidate_listings(today)
+        scores = store.get_scores([lst.id for lst in candidates])
+        listings = [
+            lst
+            for lst in candidates
+            if display.in_range(scores[lst.id].score if lst.id in scores else None)
+        ]
+        scored = _sorted([lst for lst in listings if lst.id in scores], scores)
         unscored = [lst for lst in listings if lst.id not in scores]
         sections = [
-            ("", [_item(lst, scores[lst.id], None, today) for lst in scored]),
-            ("Unscored", [_item(lst, None, None, today) for lst in unscored]),
+            ("", [_item(lst, scores[lst.id], None, today, display) for lst in scored]),
+            ("Unscored", [_item(lst, None, None, today, display) for lst in unscored]),
         ]
-        return listing_page(request, "Queue", "queue", sections)
+        return listing_page(
+            request, "Queue", "queue", sections, hidden=len(candidates) - len(listings)
+        )
 
     @app.get("/shortlist", response_class=HTMLResponse)
     def shortlist(request: Request):
@@ -190,16 +272,31 @@ def create_app(
         rows = store.shortlist(today)
         pipeline.write_shortlist(store, ws.paths.shortlist, today)
         scores = store.get_scores([lst.id for lst, _ in rows])
-        items = [_item(lst, scores.get(lst.id), rating, today) for lst, rating in rows]
+        items = [
+            _item(lst, scores.get(lst.id), rating, today, ws.settings.display)
+            for lst, rating in rows
+        ]
         return listing_page(request, "Shortlist", "shortlist", [("", items)])
 
     @app.get("/rated", response_class=HTMLResponse)
-    def rated(request: Request):
+    def rated(request: Request, all: bool = False):
         store, today = ws.store, date.today()
+        now = datetime.now()
+        rules = ws.settings.rated
         rows = store.all_ratings()
-        scores = store.get_scores([lst.id for lst, _ in rows])
-        items = [_item(lst, scores.get(lst.id), rating, today) for lst, rating in rows]
-        return listing_page(request, "Rated", "rated", [("", items)])
+        kept = [
+            (lst, rating)
+            for lst, rating in rows
+            if all or not rules.hidden(rating.rating, rating.rated_at, now)
+        ]
+        scores = store.get_scores([lst.id for lst, _ in kept])
+        items = [
+            _item(lst, scores.get(lst.id), rating, today, ws.settings.display)
+            for lst, rating in kept
+        ]
+        return listing_page(
+            request, "Rated", "rated", [("", items)], hidden=len(rows) - len(kept)
+        )
 
     @app.post("/ratings")
     def post_rating(
@@ -220,6 +317,46 @@ def create_app(
             "changed": saved is not None,
             "since_learned": store.ratings_since(learned_at(store)),
         }
+
+    # -- settings ------------------------------------------------------------
+
+    THEMES = ("auto", "light", "dark")
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request, saved: bool = False):
+        return render(
+            request,
+            "settings.html",
+            themes=THEMES,
+            sorts=("score", "deadline", "newest"),
+            notice="Saved." if saved else None,
+        )
+
+    @app.post("/settings")
+    async def save_settings_page(request: Request):
+        form = await request.form()
+        try:
+            updated = settings_from_form(form, ws.settings)
+        except ConfigError as exc:
+            return render(
+                request,
+                "settings.html",
+                status_code=400,
+                themes=THEMES,
+                sorts=("score", "deadline", "newest"),
+                error=f"not saved: {exc}",
+            )
+        save_settings(ws.paths, updated)
+        ws.settings = updated
+        return RedirectResponse("/settings?saved=1", status_code=303)
+
+    @app.post("/settings/theme")
+    async def toggle_theme(request: Request, next: str = Form("/")):
+        """The header toggle: auto → dark → light → auto, then back where you were."""
+        order = {"auto": "dark", "dark": "light", "light": "auto"}
+        ws.settings.display.theme = order[ws.settings.display.theme]
+        save_settings(ws.paths, ws.settings)
+        return RedirectResponse(next or "/", status_code=303)
 
     # -- file editors: only these four workspace files, nothing else ----------
 

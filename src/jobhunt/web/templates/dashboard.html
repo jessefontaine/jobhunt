@@ -20,10 +20,20 @@ learning will fail. Install it and run <code>claude login</code>.</p>
 {%- endmacro %}
 <details class="changelog">
 <summary><h2>What's new <small class="muted">jobhunt {{ version }}</small></h2></summary>
-{% if install.editable %}
-<p class="muted">development checkout{% if install.path %} at <code>{{ install.path }}</code>{% endif %}
-  — update it with <code>git pull</code></p>
-{% endif %}
+<p class="updates muted">
+  {%- if status.reason %}No update check: {{ status.reason }}.
+  {%- else %}Tracking <code>{{ status.tracking }}</code>{% if status.commit %} at
+    <code>{{ status.commit[:7] }}</code>{% endif %}.
+    {% if status.checked_at %}Checked {{ status.checked_at.strftime("%Y-%m-%d %H:%M") }}.
+    {% else %}Not checked yet.{% endif %}
+    {% if status.error %}<span class="failed">Last check failed: {{ status.error }}</span>{% endif %}
+    {% if not settings.updates.check %}Automatic checks are off in
+      <a href="/settings">Settings</a>.{% endif %}
+  {%- endif %}
+  <form method="post" action="/actions/update-check" class="inline">
+    <button type="submit"{% if busy %} disabled{% endif %}>Check now</button>
+  </form>
+</p>
 {% for e in changelog[:5] %}{{ entry(e) }}{% endfor %}
 {% if changelog|length > 5 %}
 <details><summary>older versions</summary>
@@ -85,6 +95,21 @@ learning will fail. Install it and run <code>claude login</code>.</p>
       <span>re-render <code>digests/&lt;today&gt;.md</code> and <code>shortlist.md</code></span>
       <p class="when">When you rated in the browser and want the markdown files to match, or you
          want today's digest rebuilt after scores changed. Nothing is fetched or scored.</p>
+    </div>
+  </form>
+  <form method="post" action="/actions/add" class="action">
+    <button type="submit"{% if busy %} disabled{% endif %}>Add a link</button>
+    <div class="detail">
+      <span>store a vacancy you found yourself, and score it</span>
+      <p class="when">When you (or Claude) come across a role the sources did not turn up: paste
+         the link and it joins the queue, the digest and the ratings loop like any other. If the
+         site blocks the fetch, fill in the title and employer by hand.</p>
+      <div class="options">
+        <label>link <input type="text" name="url" size="32" placeholder="https://…"></label>
+        <label>title <input type="text" name="title" size="18" placeholder="only if blocked"></label>
+        <label>employer <input type="text" name="employer" size="14"></label>
+        <label><input type="checkbox" name="no_score" value="1"> skip scoring</label>
+      </div>
     </div>
   </form>
   <form method="post" action="/actions/learn" class="action">
