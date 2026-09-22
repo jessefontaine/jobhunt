@@ -36,39 +36,67 @@ learning will fail. Install it and run <code>claude login</code>.</p>
 <section class="actions">
   <form method="post" action="/actions/check" class="action">
     <button type="submit"{% if busy %} disabled{% endif %}>Check</button>
-    <span>fetch → score → digest</span>
-    <label>source
-      <select name="source">
-        <option value="">all enabled</option>
-        {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-      </select>
-    </label>
-    <label><input type="checkbox" name="no_score" value="1"> skip scoring</label>
-    <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+    <div class="detail">
+      <span>fetch → score → digest</span>
+      <p class="when">Your normal daily run, and the one to press if you are not sure which to use
+         — it does the other three in order and skips work already done.</p>
+      <div class="options">
+        <label>source
+          <select name="source">
+            <option value="">all enabled</option>
+            {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+        <label><input type="checkbox" name="no_score" value="1"> skip scoring</label>
+        <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+      </div>
+    </div>
   </form>
   <form method="post" action="/actions/fetch" class="action">
     <button type="submit"{% if busy %} disabled{% endif %}>Fetch</button>
-    <span>only pull new listings into the store</span>
-    <label>source
-      <select name="source">
-        <option value="">all enabled</option>
-        {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-      </select>
-    </label>
+    <div class="detail">
+      <span>only pull new listings into the store</span>
+      <p class="when">When you just want to see what is out there without spending Claude calls,
+         or a single source failed and you are retrying that one.</p>
+      <div class="options">
+        <label>source
+          <select name="source">
+            <option value="">all enabled</option>
+            {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    </div>
   </form>
   <form method="post" action="/actions/score" class="action">
     <button type="submit"{% if busy %} disabled{% endif %}>Score</button>
-    <span>score unscored listings with Claude</span>
-    <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+    <div class="detail">
+      <span>score unscored listings with Claude</span>
+      <p class="when">When listings are sitting unscored, or after editing your profile, CV or
+         preferences — tick <em>rescore</em> to replace the scores those edits made stale.</p>
+      <div class="options">
+        <label><input type="checkbox" name="rescore" value="1"> rescore everything open</label>
+      </div>
+    </div>
   </form>
   <form method="post" action="/actions/digest" class="action">
     <button type="submit"{% if busy %} disabled{% endif %}>Digest</button>
-    <span>re-render <code>digests/&lt;today&gt;.md</code> and <code>shortlist.md</code></span>
+    <div class="detail">
+      <span>re-render <code>digests/&lt;today&gt;.md</code> and <code>shortlist.md</code></span>
+      <p class="when">When you rated in the browser and want the markdown files to match, or you
+         want today's digest rebuilt after scores changed. Nothing is fetched or scored.</p>
+    </div>
   </form>
   <form method="post" action="/actions/learn" class="action">
     <button type="submit"{% if busy %} disabled{% endif %}>Regenerate preferences</button>
-    <span>{{ stats.since_learned }} rating(s) since {% if stats.learned_at %}{{ stats.learned_at.strftime("%Y-%m-%d %H:%M") }}{% else %}the start{% endif %}
-      — one Claude call, rewrites <code>## Learned</code> in <code>profile/preferences.md</code></span>
+    <div class="detail">
+      <span>{{ stats.since_learned }} rating(s) since {% if stats.learned_at %}{{ stats.learned_at.strftime("%Y-%m-%d %H:%M") }}{% else %}the start{% endif %}
+        — one Claude call, rewrites <code>## Learned</code> and <code>## Specifics</code> in
+        <code>profile/preferences.md</code></span>
+      <p class="when">After rating a batch (three or more new ratings is a good moment), so later
+         scoring reflects them. It never touches the rules you wrote yourself under
+         <code>## Manual</code>.</p>
+    </div>
   </form>
 </section>
 
