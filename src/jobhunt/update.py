@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from importlib import metadata, resources
 from pathlib import Path
 
@@ -176,6 +177,26 @@ def remote_file(url: str, ref: str, path: str, run: GitRunner = run_git) -> tupl
 # -- the object the web app holds -------------------------------------------------------
 
 
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+@dataclass(frozen=True)
+class Status:
+    """What the update check is doing, for the dashboard and `jobhunt update --check`."""
+
+    version: str
+    tracking: str | None  # "<url>@<ref>" when checks are on
+    commit: str | None  # the installed commit
+    checked_at: datetime | None
+    error: str | None  # the last check's git error, if it failed
+    reason: str | None  # why checks are off; None means they are on
+    available: Available | None
+
+    @property
+    def checking(self) -> bool:
+        return self.reason is None
+
+
 @dataclass(frozen=True)
 class Available:
     commit: str
@@ -212,18 +233,50 @@ class Updater:
         self._interval = interval
         self._sleep = sleep
         self._seen: dict[str, Available] = {}  # remote commit -> what it offers
+        self.checked_at: datetime | None = None
+        self.last_error: str | None = None
+
+    def disabled_reason(self) -> str | None:
+        """Why this install cannot be checked for updates, or None when it can be."""
+        if self.install.editable:
+            where = f" at {self.install.path}" if self.install.path else ""
+            return f"development checkout{where} — update it with git pull"
+        if not self.install.url:
+            return "this engine was not installed from git — update it the way you installed it"
+        if self.install.branch and COMMIT_RE.match(self.install.branch):
+            return (
+                f"pinned to commit {self.install.branch[:7]} — checks are off until the pin is "
+                "removed from the workspace pyproject.toml"
+            )
+        return None
+
+    def status(self) -> Status:
+        reason = self.disabled_reason()
+        ref = self.install.branch or "HEAD"
+        return Status(
+            version=self.version,
+            tracking=None if reason else f"{self.install.url}@{ref}",
+            commit=self.install.commit,
+            checked_at=self.checked_at,
+            error=self.last_error,
+            reason=reason,
+            available=self.available,
+        )
 
     def check(self) -> Available | None:
         """Refresh `available`; a failed check is one stderr line and leaves it unchanged."""
+        if self.disabled_reason():
+            return None
         try:
             self.available = self._check()
+            self.last_error = None
         except UpdateError as exc:
+            self.last_error = str(exc)
             print(f"update check: {exc}", file=sys.stderr)
+        self.checked_at = datetime.now()
         return self.available
 
     def _check(self) -> Available | None:
-        if self.install.editable or not self.install.url:
-            return None
         ref = self.install.branch or "HEAD"
         head = remote_head(self.install.url, ref, self._run_git)
         if head == self.install.commit:

@@ -273,3 +273,34 @@ def test_serve_requires_a_workspace(tmp_path, monkeypatch):
     result = runner.invoke(app, ["serve", "--no-open"])
     assert result.exit_code == 1
     assert NO_WORKSPACE in result.output
+
+
+def test_update_check_explains_this_editable_checkout(root):
+    result = run(root, "update", "--check")
+    assert result.exit_code == 0, result.output
+    assert "development checkout" in result.output
+    assert "no update check" in result.output
+
+
+def test_update_refuses_to_update_an_editable_checkout(root):
+    result = run(root, "update")
+    assert result.exit_code == 1
+    assert "development checkout" in result.output
+
+
+def test_learn_regenerates_preferences(scored_root):
+    root = scored_root
+    result = run(root, "learn")
+    assert result.exit_code == 0, result.output
+    assert "preferences: updated" in result.output
+    assert "- learned rule" in (root / "profile" / "preferences.md").read_text()
+
+
+def test_rescore_leaves_rated_listings_alone_unless_asked(scored_root):
+    root = scored_root
+    run(root, "check", "--fixture", str(root / "listings.json"))
+    digest = newest_digest(root / "digests")
+    digest.write_text(digest.read_text().replace("rating:\nnote:", "rating: 1\nnote: no", 1))
+    run(root, "rate", "--no-learn")
+    assert "scored: 1" in run(root, "score", "--rescore").output
+    assert "scored: 2" in run(root, "score", "--rescore", "--include-rated").output

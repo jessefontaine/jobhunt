@@ -352,3 +352,62 @@ def test_update_needs_uv(tmp_path, monkeypatch):
     monkeypatch.setattr("jobhunt.update.shutil.which", lambda name: None)
     with pytest.raises(UpdateError, match="uv not found"):
         updater.update(lambda line: None)
+
+
+# -- status: why a check is off, and what the last one did ------------------
+
+
+def test_status_reports_what_is_tracked_after_a_successful_check(tmp_path):
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40))
+    updater.check()
+    status = updater.status()
+    assert status.tracking == f"{GIT_URL}@HEAD"
+    assert status.commit == "a" * 40
+    assert status.checked_at is not None
+    assert status.error is None
+    assert status.reason is None
+    assert status.available is not None
+
+
+def test_status_keeps_the_last_git_error(tmp_path):
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40, fail=True))
+    updater.check()
+    assert updater.status().error == "boom"
+
+
+def test_a_later_success_clears_the_error(tmp_path):
+    git = FakeGit(head="b" * 40, fail=True)
+    updater = make_updater(tmp_path, git)
+    updater.check()
+    git.fail = False
+    updater.check()
+    assert updater.status().error is None
+
+
+def test_status_explains_an_editable_install(tmp_path):
+    install = EngineInstall(path=Path("/src/jobhunt"))
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40), install=install)
+    assert "development checkout" in updater.status().reason
+    assert "/src/jobhunt" in updater.status().reason
+
+
+def test_status_explains_an_install_that_did_not_come_from_git(tmp_path):
+    install = EngineInstall(url=None, editable=False)
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40), install=install)
+    assert "not installed from git" in updater.status().reason
+
+
+def test_a_commit_pin_turns_checks_off_instead_of_failing_every_time(tmp_path):
+    git = FakeGit(head="b" * 40)
+    pinned = EngineInstall(url=GIT_URL, commit="a" * 40, branch="c" * 40, editable=False)
+    updater = make_updater(tmp_path, git, install=pinned)
+    assert updater.check() is None
+    assert git.calls == []  # ls-remote can never resolve a bare commit sha
+    assert "pinned to commit ccccccc" in updater.status().reason
+
+
+def test_status_says_checks_are_on_for_a_branch_pin(tmp_path):
+    pinned = EngineInstall(url=GIT_URL, commit="a" * 40, branch="dev", editable=False)
+    updater = make_updater(tmp_path, FakeGit(head="b" * 40), install=pinned)
+    assert updater.status().reason is None
+    assert updater.status().tracking == f"{GIT_URL}@dev"

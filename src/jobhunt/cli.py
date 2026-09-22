@@ -83,9 +83,10 @@ def fetch(
 
 
 RESCORE_HELP = (
-    "Score every unexpired listing again, replacing existing scores "
+    "Score every unexpired, unrated listing again, replacing existing scores "
     "(e.g. after editing profile/ or preferences; one Claude call per batch)"
 )
+INCLUDE_RATED_HELP = "With --rescore, also re-score listings you already rated"
 
 
 @app.command()
@@ -93,9 +94,12 @@ def score(
     ctx: typer.Context,
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the first prompt and stop"),
     rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
+    include_rated: bool = typer.Option(False, "--include-rated", help=INCLUDE_RATED_HELP),
 ) -> None:
     """Score unscored listings with Claude (`claude -p`)."""
-    _workspace(ctx).score(rescore=rescore, dry_run=dry_run, progress=typer.echo)
+    _workspace(ctx).score(
+        rescore=rescore, dry_run=dry_run, include_rated=include_rated, progress=typer.echo
+    )
 
 
 @app.command()
@@ -119,9 +123,17 @@ def check(
     fixture: Path | None = typer.Option(None, help="Load listings from a JSON fixture instead"),
     no_score: bool = typer.Option(False, "--no-score", help="Skip Claude scoring"),
     rescore: bool = typer.Option(False, "--rescore", help=RESCORE_HELP),
+    include_rated: bool = typer.Option(False, "--include-rated", help=INCLUDE_RATED_HELP),
 ) -> None:
     """fetch → score → digest, in one go."""
-    _workspace(ctx).check(source, fixture, no_score=no_score, rescore=rescore, progress=typer.echo)
+    _workspace(ctx).check(
+        source,
+        fixture,
+        no_score=no_score,
+        rescore=rescore,
+        include_rated=include_rated,
+        progress=typer.echo,
+    )
 
 
 @app.command()
@@ -160,6 +172,53 @@ def rate(
 
 
 @app.command()
+def learn(ctx: typer.Context) -> None:
+    """Regenerate the learned preferences from every rating (one Claude call)."""
+    if not _workspace(ctx).learn(progress=typer.echo):
+        raise typer.Exit(1)
+
+
+@app.command()
+def update(
+    ctx: typer.Context,
+    check: bool = typer.Option(False, "--check", help="Report what an update would do and stop"),
+) -> None:
+    """Update the engine to the newest commit on GitHub, or say why it cannot be checked."""
+    from jobhunt.update import EngineInstall, UpdateError, Updater
+
+    ws = _workspace(ctx)
+    # No restart: a CLI run just exits when uv sync is done (the server needs one, we do not).
+    updater = Updater(EngineInstall.detect(), ws.paths.root, restart=lambda: None)
+    status = updater.status()
+    commit = f" ({status.commit[:7]})" if status.commit else ""
+    typer.echo(f"installed: jobhunt {status.version}{commit}")
+    if status.reason:
+        typer.echo(f"no update check: {status.reason}")
+        raise typer.Exit(0 if check else 1)
+    typer.echo(f"tracking:  {status.tracking}")
+    available = updater.check()
+    if error := updater.status().error:
+        typer.echo(f"check failed: {error}", err=True)
+        raise typer.Exit(1)
+    if available is None:
+        typer.echo("up to date")
+        return
+    typer.echo(f"available: jobhunt {available.version} ({available.commit[:7]})")
+    for entry in available.entries:
+        typer.echo(f"  {entry.version} — {entry.date}")
+        for note in entry.notes:
+            typer.echo(f"    - {note}")
+    if check:
+        typer.echo("run `jobhunt update` to install it")
+        return
+    try:
+        updater.update(progress=typer.echo)
+    except UpdateError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
 def sources(ctx: typer.Context) -> None:
     """List known sources and whether they are enabled."""
     enabled = set(_workspace(ctx).config.enabled_sources())
@@ -186,8 +245,12 @@ def serve(
     from jobhunt.web.app import create_app
 
     ws = _workspace(ctx)
-    updater = Updater(EngineInstall.detect(), ws.paths.root)
-    updater.start()  # `git ls-remote` every 10 min; the UI shows a banner when the engine moved
+    updates = ws.settings.updates
+    updater = Updater(
+        EngineInstall.detect(), ws.paths.root, interval=updates.interval_minutes * 60
+    )
+    if updates.check:  # `git ls-remote` on a timer; the UI shows a banner when the engine moved
+        updater.start()
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     typer.echo(f"jobhunt UI: {url} (Ctrl-C to stop)")
     if open_browser:
