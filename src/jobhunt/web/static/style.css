@@ -39,9 +39,13 @@ h2 { font-size: 1.1rem; margin: 1.6rem 0 0.6rem; }
              padding: 0.6rem 0.8rem; }
 .stats b { font-size: 1.4rem; }
 .actions { display: flex; flex-direction: column; gap: 0.5rem; }
-.action { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; background: var(--card);
+.action { display: flex; gap: 0.8rem; align-items: flex-start; flex-wrap: wrap; background: var(--card);
           border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.8rem; }
-.action > span { color: var(--muted); flex: 1 1 12rem; }
+.action .detail { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 16rem; }
+.action .detail > span { color: var(--fg); }
+.action .options { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;
+                   margin-top: 0.15rem; }
+.when { margin: 0; color: var(--muted); font-size: 0.9em; max-width: 60ch; }
 .action label { display: inline-flex; gap: 0.3rem; align-items: center; font-size: 0.9em; }
 button { font: inherit; padding: 0.35rem 0.9rem; border-radius: 6px; border: 1px solid var(--border);
          background: var(--pill); color: var(--fg); cursor: pointer; }

@@ -289,6 +289,14 @@ def test_health_reports_version_and_a_boot_id(client):
     assert f'data-boot="{health["boot"]}"' in client.get("/").text
 
 
+def test_every_action_says_when_to_use_it(client):
+    page = client.get("/").text
+    # one "when to use this" line under each of the five action buttons
+    assert page.count('<p class="when">') == 5
+    assert "Your normal daily run" in page
+    assert "never touches the rules you wrote yourself" in page
+
+
 def test_dashboard_shows_whats_new_folded(client):
     page = client.get("/").text
     assert "What's new" in page and "jobhunt 0.2.0" in page
