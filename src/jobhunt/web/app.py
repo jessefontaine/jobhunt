@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from jobhunt import pipeline
+from jobhunt.calibration import ENOUGH_RATINGS, verdict
 from jobhunt.config import ConfigError, parse_config
 from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
@@ -278,6 +279,25 @@ def create_app(
             for lst, rating in rows
         ]
         return listing_page(request, "Shortlist", "shortlist", [("", items)])
+
+    @app.get("/calibration", response_class=HTMLResponse)
+    def calibration_page(request: Request):
+        today = date.today()
+        result = ws.calibration()
+        items = [
+            _item(d.listing, d.score, d.rating, today, ws.settings.display)
+            | {"surprise": d.surprise, "over_scored": d.over_scored}
+            for d in ws.disagreements(limit=8)
+        ]
+        return render(
+            request,
+            "calibration.html",
+            result=result,
+            verdict=verdict(result.rho),
+            items=items,
+            labels=RATING_LABELS,
+            enough=ENOUGH_RATINGS,
+        )
 
     @app.get("/rated", response_class=HTMLResponse)
     def rated(request: Request, all: bool = False):
