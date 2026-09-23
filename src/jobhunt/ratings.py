@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -223,7 +223,7 @@ def render_preferences(prefs: Preferences) -> str:
     return "\n\n".join(p for p in parts if p) + "\n"
 
 
-def _preferences_prompt(
+def preferences_prompt(
     prefs: Preferences,
     rated: list[tuple[Listing, Rating]],
     scores: dict[str, Score],
@@ -261,7 +261,7 @@ def learn_rules(
     passes the ratings it is allowed to see. None when Claude's output is unusable.
     """
     try:
-        prompt = _preferences_prompt(prefs, rated, scores, caps)
+        prompt = preferences_prompt(prefs, rated, scores, caps)
         return RuleSet.model_validate(_extract_payload(runner(prompt, model, RULE_SCHEMA)))
     except (ValueError, ValidationError, RuntimeError):
         return None
@@ -269,6 +269,23 @@ def learn_rules(
 
 def _bullets(rules: list[str]) -> str:
     return "\n".join(f"- {r.strip()}" for r in rules if r.strip())
+
+
+def with_rules(prefs: Preferences, ruleset: RuleSet) -> Preferences:
+    """A copy of `prefs` whose `## Learned` and `## Specifics` come from `ruleset`.
+
+    Cross-validation renders this to get the candidate rules a fold scores with, without
+    writing anything; `regenerate_preferences` renders it to the file.
+    """
+    return replace(
+        prefs, learned=_bullets(ruleset.rules), specifics=_bullets(ruleset.specifics)
+    )
+
+
+def write_rules(paths: Paths, store: Store, prefs: Preferences, ruleset: RuleSet) -> None:
+    """Put `ruleset` into preferences.md, leaving `## Manual` and any other section alone."""
+    paths.preferences.write_text(render_preferences(with_rules(prefs, ruleset)))
+    store.set_meta(LEARNED_AT, datetime.now().isoformat())
 
 
 def regenerate_preferences(
@@ -291,8 +308,5 @@ def regenerate_preferences(
     ruleset = learn_rules(prefs, rated, scores, runner, model, caps)
     if ruleset is None:
         return False
-    prefs.learned = _bullets(ruleset.rules)
-    prefs.specifics = _bullets(ruleset.specifics)
-    pref_path.write_text(render_preferences(prefs))
-    store.set_meta(LEARNED_AT, datetime.now().isoformat())
+    write_rules(paths, store, prefs, ruleset)
     return True

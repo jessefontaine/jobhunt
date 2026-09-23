@@ -74,6 +74,21 @@ class PreferenceSettings(BaseModel):
     max_words_per_rule: int = Field(20, ge=5, le=100)
 
 
+class CalibrationSettings(BaseModel):
+    """What a cross-validation run may spend, and what counts as an improvement.
+
+    The evaluation set is capped because its return is `1/sqrt(n)` while its cost is linear;
+    the training set is not, because it is only `folds + 1` calls however many ratings there are.
+    """
+
+    folds: int = Field(5, ge=2, le=10)
+    eval_cap: int = Field(50, ge=10, le=500)  # listings scored per arm
+    min_ratings: int = Field(20, ge=10)  # below this a difference is noise; refuse to run
+    max_calls: int = Field(40, ge=4)  # hard ceiling: refuse rather than overrun
+    min_rho_gain: float = Field(0.05, ge=0.0, le=1.0)
+    max_surprise_loss: float = Field(0.25, ge=0.0, le=4.0)
+
+
 class UpdateSettings(BaseModel):
     check: bool = True
     interval_minutes: int = Field(10, ge=1)
@@ -86,6 +101,7 @@ class Settings(BaseModel):
     shortlist: ShortlistSettings = Field(default_factory=ShortlistSettings)
     rated: RatedSettings = Field(default_factory=RatedSettings)
     preferences: PreferenceSettings = Field(default_factory=PreferenceSettings)
+    calibration: CalibrationSettings = Field(default_factory=CalibrationSettings)
     updates: UpdateSettings = Field(default_factory=UpdateSettings)
 
 

@@ -8,6 +8,15 @@ import typer
 
 from jobhunt.calibration import render
 from jobhunt.config import Paths, find_root
+from jobhunt.crossval import (
+    LearnFailed,
+    NotEnoughRatings,
+    TooExpensive,
+    last_run,
+    render_last,
+    render_plan,
+)
+from jobhunt.crossval import render as render_crossval
 from jobhunt.digest import newest_digest
 from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl
 from jobhunt.scaffold import DEFAULT_ENGINE_URL, init_workspace
@@ -122,6 +131,9 @@ def calibration(ctx: typer.Context) -> None:
     """Check Claude's scores against your ratings: rank correlation and a mean per band."""
     ws = _workspace(ctx)
     typer.echo(render(ws.calibration()))
+    if line := render_last(last_run(ws.store)):
+        typer.echo("")
+        typer.echo(line)
 
 
 @app.command()
@@ -247,10 +259,50 @@ def show(
 
 
 @app.command()
-def learn(ctx: typer.Context) -> None:
-    """Regenerate the learned preferences from every rating (one Claude call)."""
-    if not _workspace(ctx).learn(progress=typer.echo):
-        raise typer.Exit(1)
+def learn(
+    ctx: typer.Context,
+    cross_validate: bool = typer.Option(
+        False,
+        "--cross-validate",
+        "-x",
+        help="Measure the new rules on held-out ratings first, and write them only if they win",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print what a cross-validation would cost and stop"
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Write the new rules even when the check rejects them"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+) -> None:
+    """Regenerate the learned preferences from every rating (one Claude call).
+
+    With --cross-validate the rewrite is measured against ratings it was not allowed to see,
+    and written only if the out-of-sample correlation actually improves. That costs many
+    Claude calls, so the run is priced and confirmed first.
+    """
+    ws = _workspace(ctx)
+    if not cross_validate:
+        if not ws.learn(progress=typer.echo):
+            raise typer.Exit(1)
+        return
+    try:
+        priced = ws.plan_cross_validation()
+    except (NotEnoughRatings, TooExpensive) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(render_plan(priced))
+    if dry_run:
+        return
+    if not yes:
+        typer.confirm("Run it?", abort=True)
+    try:
+        result = ws.cross_validate(progress=typer.echo, force=force)
+    except LearnFailed as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo("")
+    typer.echo(render_crossval(result))
 
 
 @app.command()

@@ -4,6 +4,15 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.9.0 — 2026-09-23
+- `jobhunt learn --cross-validate` checks a preferences rewrite against ratings it was not
+  allowed to see, and writes the new rules only if the out-of-sample correlation improves.
+- The run is priced before it starts: `--dry-run` prints the call count, token estimate and
+  minutes without calling Claude, and a run over the call ceiling is refused rather than started.
+- New calibration settings: folds, eval cap, rating floor, call ceiling and the margins a
+  rewrite has to clear.
+- `jobhunt calibration` ends with the last cross-validation verdict.
+
 ## 0.8.0 — 2026-09-23
 - Scoring and preference learning can now be driven with inputs supplied by the caller, so a
   run can be measured against ratings it was not allowed to see. No change to what you get today.
