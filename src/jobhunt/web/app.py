@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from jobhunt import pipeline
 from jobhunt.calibration import ENOUGH_RATINGS, verdict
 from jobhunt.config import ConfigError, parse_config
+from jobhunt.crossval import NotEnoughRatings, TooExpensive, last_run
 from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
 from jobhunt.models import Listing, Rating, Score
@@ -116,13 +117,19 @@ def create_app(
 
     # -- actions: each starts one background job and sends the user back to the dashboard --
 
-    def start(request: Request, name: str, fn: Callable[[Progress], object]):
+    def start(
+        request: Request,
+        name: str,
+        fn: Callable[..., object],
+        back: str = "/",
+        cancellable: bool = False,
+    ):
         try:
-            jobs.start(name, fn)
+            jobs.start(name, fn, cancellable=cancellable)
         except JobBusy as exc:
             ctx = dashboard_context(error=f"a job is already running ({exc})")
             return render(request, "dashboard.html", status_code=409, **ctx)
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(back, status_code=303)
 
     @app.post("/actions/check")
     def action_check(
@@ -156,6 +163,18 @@ def create_app(
     @app.post("/actions/learn")
     def action_learn(request: Request):
         return start(request, "learn", ws.learn)
+
+    @app.post("/actions/cross-validate")
+    def action_cross_validate(request: Request, force: bool = Form(False)):
+        """The expensive one: many Claude calls, so the page prices it before offering it."""
+
+        def run(progress: Progress, should_stop) -> None:
+            result = ws.cross_validate(progress=progress, should_stop=should_stop, force=force)
+            progress(result.reason)
+
+        return start(
+            request, "cross-validate", run, back="/calibration", cancellable=True
+        )
 
     @app.post("/actions/update")
     def action_update(request: Request):
@@ -217,6 +236,15 @@ def create_app(
         if job is None:
             return JSONResponse({"error": "no such job"}, status_code=404)
         return job.as_dict()
+
+    @app.post("/jobs/{job_id}/cancel")
+    def cancel_job(job_id: int):
+        """Ask a running job to stop. Already-finished jobs ignore it, which is not an error."""
+        job = jobs.get(job_id)
+        if job is None:
+            return JSONResponse({"error": "no such job"}, status_code=404)
+        job.cancel()
+        return RedirectResponse("/calibration", status_code=303)
 
     # -- listing pages -------------------------------------------------------
 
@@ -289,6 +317,11 @@ def create_app(
             | {"surprise": d.surprise, "over_scored": d.over_scored}
             for d in ws.disagreements(limit=8)
         ]
+        priced, refusal = None, ""
+        try:
+            priced = ws.plan_cross_validation()
+        except (NotEnoughRatings, TooExpensive) as exc:
+            refusal = str(exc)
         return render(
             request,
             "calibration.html",
@@ -297,6 +330,10 @@ def create_app(
             items=items,
             labels=RATING_LABELS,
             enough=ENOUGH_RATINGS,
+            plan=priced,
+            refusal=refusal,
+            last=last_run(ws.store),
+            job=jobs.current,
         )
 
     @app.get("/rated", response_class=HTMLResponse)
