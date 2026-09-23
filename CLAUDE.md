@@ -26,6 +26,14 @@ against a user's profile with `claude -p`, write digests, learn from ratings. Re
   look*; everything else is `settings.yaml`.
 - Scoring and preference learning go through the shell `claude` CLI; if it reports
   `OAuth session expired`, the user has to run `claude login`.
+- Anything that spends many Claude calls prices itself first (`crossval.plan`, built from real
+  prompts, no call) and refuses over `calibration.max_calls` rather than overrunning. Cap what
+  scales with `n` for `sqrt(n)` of precision — the evaluation set — not what a fixed number of
+  calls covers. Long jobs take `should_stop` and check it between calls.
+- Cross-validation must never leak: a held-out rating may not reach the rules scoring it, nor
+  its own few-shot examples, and a measurement never writes to the `scores` table. That is what
+  `ScoringContext`/`score_batch`/`learn_rules` exist for, and `tests/test_crossval.py` asserts
+  it by capturing every prompt.
 - Every PR bumps `version` in `pyproject.toml` and adds a matching `## x.y.z — YYYY-MM-DD`
   entry at the top of `src/jobhunt/CHANGELOG.md` (`tests/test_update.py` checks they agree).
   The UI's update banner and dashboard changelog are built from that file; its bullets render as
@@ -47,6 +55,7 @@ scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
 | `sources/<site>.py` | one scraper each; `fixture.py` loads listings from JSON for tests and `check --fixture`; `manual.py` is not in the registry — it turns one pasted URL into a Listing for `jobhunt add` |
 | `scoring.py` | `build_prompt(profile, preferences, cv, examples, batch)` and `claude_runner` (`claude -p --output-format json --json-schema …`); the `Runner` is injected so tests never call Claude |
 | `ratings.py` | parse `rating:`/`note:` lines out of a digest, append to `ratings.jsonl`, `regenerate_preferences` (rewrites `## Learned`, keeps `## Manual`) |
+| `crossval.py` | k-fold cross-validation of a preferences rewrite: `plan` prices a run with no Claude call, `cross_validate` measures both arms on held-out ratings and writes only through `gate`. Fold rules are never kept — an accepted run retrains on every rating |
 | `digest.py` | render the ranked markdown the user rates in (`## Shortlist`, numbered queue, `## Unscored`) |
 | `store.py` | SQLite: listings, scores, ratings, a `meta` table (e.g. `learned_at`) |
 | `config.py`, `models.py` | `Paths` + `sources.yaml` loading (pydantic); `Listing`, `Score`, `Rating` |

@@ -4,6 +4,16 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.10.0 — 2026-09-23
+- The Calibration page can run a cross-validation: what it will cost in Claude calls, tokens and
+  minutes is shown before the button, and the last verdict stays on the page afterwards.
+- Long jobs can be stopped. A Stop button halts a cross-validation between Claude calls, so the
+  worst case is one call already in flight, and nothing is written.
+- The last verdict on the Calibration page carries its interval, how far tied ratings discount
+  the sample, and how often the candidate won when the listings were resampled.
+- Settings: the cross-validation folds, evaluation cap, rating floor, call ceiling and the
+  margins a rewrite has to clear.
+
 ## 0.9.0 — 2026-09-23
 - `jobhunt learn --cross-validate` checks a preferences rewrite against ratings it was not
   allowed to see, and writes the new rules only if the out-of-sample correlation improves.

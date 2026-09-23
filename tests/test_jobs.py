@@ -61,3 +61,40 @@ def test_background_runner_refuses_a_second_job_while_running():
 def test_unknown_job_is_none():
     runner = JobRunner()
     assert runner.get(99) is None and runner.current is None
+
+
+def test_a_cancellable_job_is_given_a_stop_check():
+    checks = []
+
+    def work(progress, should_stop):
+        checks.append(should_stop())
+        progress("ran")
+
+    job = JobRunner(background=False).start("cross-validate", work, cancellable=True)
+    assert checks == [False]
+    assert job.status == "done" and job.lines == ["ran"]
+
+
+def test_an_ordinary_job_is_still_called_with_progress_alone():
+    job = JobRunner(background=False).start("learn", lambda progress: progress("one arg"))
+    assert job.lines == ["one arg"]
+
+
+def test_a_cancelled_job_sees_the_stop_check_turn_true_and_ends_done():
+    runner = JobRunner()
+    started = threading.Event()
+
+    def work(progress, should_stop):
+        started.set()
+        wait_until(should_stop)
+        progress("stopped before the run finished")
+
+    job = runner.start("cross-validate", work, cancellable=True)
+    assert started.wait(5)
+    assert not job.as_dict()["stopping"]
+    job.cancel()
+    wait_until(lambda: not job.running)
+    # stopping is not failing: the job did what it was asked to do
+    assert job.status == "done" and job.error is None
+    assert job.lines == ["stopped before the run finished"]
+    assert job.as_dict()["stopping"] is True
