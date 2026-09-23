@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import date
 from pathlib import Path
@@ -622,3 +623,33 @@ def test_calibration_page_shows_how_sure_the_last_verdict_is(client, ws):
     page = client.get("/calibration").text
     assert "of resamples" in page
     assert "effective" in page
+
+
+def test_calibration_page_renders_a_verdict_from_an_older_engine(client, ws):
+    """A workspace that cross-validated on 0.9.0 has no intervals stored; the page must not
+    invent them, and must not break."""
+    _many_ratings(ws)
+    ws.store.set_meta(
+        "calibration_cv",
+        json.dumps(
+            {
+                "ran_at": "2026-09-23T18:35:36",
+                "n": 50,
+                "current_rho": 0.63,
+                "candidate_rho": 0.71,
+                "delta_rho": 0.08,
+                "current_surprise": 0.26,
+                "candidate_surprise": 0.26,
+                "delta_surprise": 0.0,
+                "dropped": 0,
+                "accepted": True,
+                "written": True,
+                "cancelled": False,
+                "reason": "accepted: +0.08 rank correlation out of sample, bands +0.00.",
+            }
+        ),
+    )
+    page = client.get("/calibration")
+    assert page.status_code == 200
+    assert "+0.08" in page.text
+    assert "of resamples" not in page.text

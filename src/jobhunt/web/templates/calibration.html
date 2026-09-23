@@ -104,17 +104,23 @@
   <tr>
     <td><b>change</b></td>
     <td><b>{{ "n/a" if last.delta_rho is none else "%+.2f"|format(last.delta_rho) }}</b>
+        {% if last.delta_low is not none %}
         <small class="muted">{{ "%+.2f"|format(last.delta_low) }} to
-        {{ "%+.2f"|format(last.delta_high) }}</small></td>
+        {{ "%+.2f"|format(last.delta_high) }}</small>{% endif %}</td>
     <td><b>{{ "%+.2f"|format(last.delta_surprise) }}</b></td>
   </tr>
 </table>
 <p>Last cross-validation on {{ last.n }} held-out listing(s): {{ last.reason }}</p>
+{% if last.effective_n %}
 <p class="muted">Ratings tie — most listings are a 1 — and rank correlation reads pairs, so those
    {{ last.n }} carry the information of about {{ last.effective_n }} (effective). That is why the
    interval beside the change is as wide as it is. The candidate came out ahead in
    {{ "%.0f"|format(last.positive * 100) }}% of resamples, which covers which listings landed in
    the held-out set — not how much a second Claude run would have moved the scores.</p>
+{% else %}
+<p class="muted">This verdict was recorded before the intervals existed, so there is nothing to
+   say about how much of it was the sample. The next run will carry them.</p>
+{% endif %}
 {% if last.dropped %}
 <p class="muted">{{ last.dropped }} listing(s) were dropped to failed batches, in both arms.</p>
 {% endif %}
