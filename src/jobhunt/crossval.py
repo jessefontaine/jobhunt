@@ -15,11 +15,19 @@ from __future__ import annotations
 
 import json
 import math
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from jobhunt.calibration import Agreement, agreement, mean_surprise, spearman
+from jobhunt.calibration import (
+    Agreement,
+    agreement,
+    effective_n,
+    mean_surprise,
+    rho_interval,
+    spearman,
+)
 from jobhunt.config import Paths, ScoringConfig
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import (
@@ -248,11 +256,63 @@ class Arm:
 
 
 @dataclass(frozen=True)
+class Uncertainty:
+    """How much of the measured change could be the sample rather than the rules."""
+
+    n: int  # held-out listings
+    effective_n: int  # what they carry once tied ratings are discounted
+    low: float  # 10th percentile of the change across resamples
+    high: float  # 90th
+    positive: float  # share of resamples the candidate won
+
+
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_SEED = 0  # fixed, so the same measurements always report the same interval
+
+
+def bootstrap_delta(
+    paired: list[tuple[int, int, int]],
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+) -> Uncertainty:
+    """Resample the held-out listings to see how much the change depends on which ones landed.
+
+    Costs nothing — it reuses the scores already measured. It answers only "would another
+    draw of listings have said the same?", not "would another Claude run have?", which is a
+    separate noise floor this does not touch.
+    """
+    ratings = [r for _, _, r in paired]
+    base = Uncertainty(len(paired), effective_n(ratings), 0.0, 0.0, 0.0)
+    if len(paired) < 2:
+        return base
+    rng = random.Random(seed)
+    deltas = []
+    for _ in range(resamples):
+        draw = [paired[rng.randrange(len(paired))] for _ in range(len(paired))]
+        before = spearman([(c, r) for c, _, r in draw])
+        after = spearman([(k, r) for _, k, r in draw])
+        if before is not None and after is not None:
+            deltas.append(after - before)
+    if not deltas:
+        return base
+    deltas.sort()
+    return Uncertainty(
+        n=len(paired),
+        effective_n=effective_n(ratings),
+        low=deltas[int(0.10 * len(deltas))],
+        high=deltas[min(int(0.90 * len(deltas)), len(deltas) - 1)],
+        positive=sum(1 for d in deltas if d > 0) / len(deltas),
+    )
+
+
+@dataclass(frozen=True)
 class Result:
     plan: Plan
     current: Arm
     candidate: Arm
     fold_rho: list[tuple[float | None, float | None]]  # per fold, (current, candidate)
+    paired: list[tuple[int, int, int]]  # per listing: (current score, candidate score, rating)
+    uncertainty: Uncertainty
     delta_rho: float | None  # candidate − current; positive is better (ranking)
     delta_surprise: float  # candidate − current; negative is better (bands)
     dropped: int  # eval listings lost to a failed batch, removed from both arms
@@ -324,6 +384,14 @@ def _score_with_retry(
     return None
 
 
+def _before(paired: list[tuple[int, int, int]]) -> float | None:
+    return spearman([(c, r) for c, _, r in paired])
+
+
+def _after(paired: list[tuple[int, int, int]]) -> float | None:
+    return spearman([(k, r) for _, k, r in paired])
+
+
 def _arm(label: str, pairs: list[tuple[int, int]]) -> Arm:
     return Arm(label=label, agreement=agreement(pairs), mean_surprise=mean_surprise(pairs))
 
@@ -352,7 +420,7 @@ def cross_validate(
     current_text = render_preferences(prefs)
     folds, evals, _ = _folds_and_evals(rated, cfg)
 
-    pooled: dict[str, list[tuple[int, int]]] = {"current": [], "candidate": []}
+    paired: list[tuple[int, int, int]] = []  # (current score, candidate score, rating)
     fold_rho: list[tuple[float | None, float | None]] = []
     dropped = 0
     cancelled = False
@@ -379,7 +447,7 @@ def cross_validate(
             ),
         }
         wanted = {lst.id: r.rating for lst, r in held_out}
-        this_fold: dict[str, list[tuple[int, int]]] = {"current": [], "candidate": []}
+        fold_paired: list[tuple[int, int, int]] = []
         progress(f"  scoring {len(held_out)} held-out listing(s) with both rule sets…")
         for batch in _chunks([lst for lst, _ in held_out], scoring.batch_size):
             if should_stop():
@@ -395,19 +463,22 @@ def cross_validate(
                 dropped += len(batch)
                 progress(f"  dropped {len(batch)} listing(s): a batch failed in one arm")
                 continue
-            for label, arm_scores in (("current", got), ("candidate", other)):
-                this_fold[label] += [
-                    (s.score, wanted[s.listing_id])
-                    for s in arm_scores
-                    if s.listing_id in wanted
-                ]
-        for label, pairs in this_fold.items():
-            pooled[label] += pairs
-        fold_rho.append((spearman(this_fold["current"]), spearman(this_fold["candidate"])))
+            before = {s.listing_id: s.score for s in got}
+            after = {s.listing_id: s.score for s in other}
+            # only listings both arms returned: one measurement per listing, or no comparison
+            fold_paired += [
+                (before[lid], after[lid], rating)
+                for lid, rating in wanted.items()
+                if lid in before and lid in after
+            ]
+        paired += fold_paired
+        fold_rho.append((_before(fold_paired), _after(fold_paired)))
         if cancelled:
             break
 
-    current, candidate = _arm("current", pooled["current"]), _arm("candidate", pooled["candidate"])
+    current = _arm("current", [(c, r) for c, _, r in paired])
+    candidate = _arm("candidate", [(k, r) for _, k, r in paired])
+    uncertainty = bootstrap_delta(paired)
     delta_rho = (
         candidate.agreement.rho - current.agreement.rho
         if current.agreement.rho is not None and candidate.agreement.rho is not None
@@ -442,6 +513,8 @@ def cross_validate(
         current=current,
         candidate=candidate,
         fold_rho=fold_rho,
+        paired=paired,
+        uncertainty=uncertainty,
         delta_rho=delta_rho,
         delta_surprise=delta_surprise,
         dropped=dropped,
@@ -468,6 +541,10 @@ def _summary(result: Result) -> dict:
         "current_surprise": round(result.current.mean_surprise, 2),
         "candidate_surprise": round(result.candidate.mean_surprise, 2),
         "delta_surprise": round(result.delta_surprise, 2),
+        "effective_n": result.uncertainty.effective_n,
+        "delta_low": round(result.uncertainty.low, 2),
+        "delta_high": round(result.uncertainty.high, 2),
+        "positive": round(result.uncertainty.positive, 2),
         "dropped": result.dropped,
         "accepted": result.accepted,
         "written": result.written,
@@ -515,21 +592,38 @@ def render_plan(priced: Plan) -> str:
     return "\n".join(lines)
 
 
+def _span(interval: tuple[float, float] | None) -> str:
+    return "n/a" if interval is None else f"{interval[0]:+.2f} to {interval[1]:+.2f}"
+
+
 def render(result: Result) -> str:
     """The plain-text report `jobhunt learn --cross-validate` prints."""
+    unsure = result.uncertainty
     lines = [
         f"Cross-validation on {result.current.agreement.n} held-out listings "
         f"({result.plan.folds} folds)",
         "",
-        f"  {'':<10} {'rank corr':>10} {'band drift':>11}",
-        f"  {'current':<10} {_rho(result.current.agreement.rho):>10} "
-        f"{result.current.mean_surprise:>11.2f}",
-        f"  {'candidate':<10} {_rho(result.candidate.agreement.rho):>10} "
-        f"{result.candidate.mean_surprise:>11.2f}",
-        f"  {'change':<10} {_rho(result.delta_rho):>10} {result.delta_surprise:>+11.2f}",
+        f"  {'':<10} {'rank corr':>10}  {'95% interval':<18} {'band drift':>10}",
+        f"  {'current':<10} {_rho(result.current.agreement.rho):>10}  "
+        f"{_span(rho_interval(result.current.agreement.rho, unsure.effective_n)):<18} "
+        f"{result.current.mean_surprise:>10.2f}",
+        f"  {'candidate':<10} {_rho(result.candidate.agreement.rho):>10}  "
+        f"{_span(rho_interval(result.candidate.agreement.rho, unsure.effective_n)):<18} "
+        f"{result.candidate.mean_surprise:>10.2f}",
+        f"  {'change':<10} {_rho(result.delta_rho):>10}  "
+        f"{_span((unsure.low, unsure.high)):<18} {result.delta_surprise:>+10.2f}",
         "",
-        result.reason,
     ]
+    if unsure.n:
+        lines += [
+            f"  Ratings tie, so {unsure.n} listings carry the information of about "
+            f"{unsure.effective_n} (effective) — hence the width above.",
+            f"  The candidate came out ahead in {unsure.positive:.0%} of resamples. That covers "
+            "which listings",
+            "  landed here, not how much a second Claude run would have moved the scores.",
+            "",
+        ]
+    lines.append(result.reason)
     if result.dropped:
         lines.append(f"{result.dropped} listing(s) dropped to failed batches, in both arms.")
     if any(pair != (None, None) for pair in result.fold_rho):

@@ -85,7 +85,9 @@ class CalibrationSettings(BaseModel):
     eval_cap: int = Field(50, ge=10, le=500)  # listings scored per arm
     min_ratings: int = Field(20, ge=10)  # below this a difference is noise; refuse to run
     max_calls: int = Field(40, ge=4)  # hard ceiling: refuse rather than overrun
-    min_rho_gain: float = Field(0.05, ge=0.0, le=1.0)
+    # Roughly the spread the sample alone puts on the change at a typical effective n, so a
+    # gain under this is not something the measurement can tell apart from luck.
+    min_rho_gain: float = Field(0.10, ge=0.0, le=1.0)
     max_surprise_loss: float = Field(0.25, ge=0.0, le=4.0)
 
 

@@ -9,6 +9,8 @@ banner.
   allowed to see, and writes the new rules only if the out-of-sample correlation improves.
 - The run is priced before it starts: `--dry-run` prints the call count, token estimate and
   minutes without calling Claude, and a run over the call ceiling is refused rather than started.
+- The report carries its own uncertainty: a 95% interval on each correlation, a resampled
+  interval on the change, and how far tied ratings discount the sample it rests on.
 - New calibration settings: folds, eval cap, rating floor, call ceiling and the margins a
   rewrite has to clear.
 - `jobhunt calibration` ends with the last cross-validation verdict.

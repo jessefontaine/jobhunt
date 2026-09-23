@@ -11,6 +11,7 @@ from jobhunt.crossval import (
     LearnFailed,
     NotEnoughRatings,
     TooExpensive,
+    bootstrap_delta,
     cross_validate,
     deal,
     gate,
@@ -392,3 +393,59 @@ def test_sample_keeps_the_rare_high_rating_in_a_skewed_fold():
     assert len(taken) == 10
     assert max(r.rating for _, r in taken) == 5
     assert min(r.rating for _, r in taken) == 1
+
+
+# -- how much of the change could be the sample? -----------------------------
+
+
+def _paired(current, candidate, ratings):
+    return [(current(r), candidate(r), r) for r in ratings]
+
+
+RATINGS = [1, 2, 3, 4, 5] * 10
+
+
+def test_bootstrap_is_confident_when_the_candidate_always_wins():
+    u = bootstrap_delta(_paired(lambda r: 60 - r * 2, lambda r: r * 20, RATINGS))
+    assert u.positive > 0.95
+    assert u.low > 0
+
+
+def test_bootstrap_is_unconvinced_when_both_arms_score_the_same():
+    u = bootstrap_delta(_paired(lambda r: r * 20, lambda r: r * 20, RATINGS))
+    assert u.positive == 0.0
+    assert (u.low, u.high) == (0.0, 0.0)
+
+
+def test_bootstrap_is_deterministic():
+    paired = _paired(lambda r: 60 - r * 2, lambda r: r * 20, RATINGS)
+    assert bootstrap_delta(paired) == bootstrap_delta(paired)
+
+
+def test_bootstrap_discounts_tied_ratings_in_its_effective_sample():
+    ratings = [1] * 35 + [2] * 9 + [3] + [4] * 4 + [5]
+    u = bootstrap_delta(_paired(lambda r: r * 10, lambda r: r * 20, ratings))
+    assert u.n == 50
+    assert u.effective_n == 35
+
+
+def test_the_run_reports_how_much_of_the_change_could_be_the_sample(env):
+    paths, store = env
+    result = cross_validate(paths, store, _runner(_rated()), _settings())
+    assert len(result.paired) == 25
+    assert result.uncertainty.n == 25
+    assert result.uncertainty.positive == 1.0  # backwards vs perfect: never a close call
+
+
+def test_render_puts_an_interval_next_to_the_change(env):
+    paths, store = env
+    text = render(cross_validate(paths, store, _runner(_rated()), _settings()))
+    assert "of resamples" in text
+    assert "effective" in text
+
+
+def test_gate_rejects_the_gain_that_used_to_squeak_through(env):
+    # 0.077 is what a real run produced and wrote on the old 0.05 margin; at that size the
+    # sample alone can move the number, so it now reports instead of writing.
+    accepted, why = gate(0.077, 0.0, CalibrationSettings())
+    assert not accepted and "margin" in why
