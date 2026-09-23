@@ -5,7 +5,14 @@ import pytest
 
 from jobhunt.config import Paths, ScoringConfig
 from jobhunt.models import Listing, Rating, Score
-from jobhunt.scoring import build_prompt, format_rated, parse_response, score_listings
+from jobhunt.scoring import (
+    ScoringContext,
+    build_prompt,
+    format_rated,
+    parse_response,
+    score_batch,
+    score_listings,
+)
 from jobhunt.store import Store
 
 TODAY = date(2026, 9, 17)
@@ -448,3 +455,62 @@ def test_score_listings_puts_examples_it_never_scored_behind_the_ones_it_did(env
     examples, _, _ = prompts[0].partition("# Listings to score")
     assert "Missed job" in examples
     assert "Unscored job" not in examples
+
+
+def test_scoring_context_load_reads_the_workspace_files(env):
+    paths, store = env
+    ctx = ScoringContext.load(paths, store, ScoringConfig())
+    assert (ctx.profile, ctx.preferences, ctx.cv) == ("PROFILE", "PREFS", "CV")
+
+
+def test_scoring_context_load_puts_the_worst_scored_example_first(env):
+    paths, store = env
+    close, missed = L(1, title="Close call"), L(2, title="Badly missed")
+    store.upsert_listings([close, missed])
+    store.save_rating(Rating(listing_id=close.id, rating=5))
+    store.save_rating(Rating(listing_id=missed.id, rating=1))
+    store.save_scores(
+        [
+            Score(listing_id=close.id, score=90, model="m"),  # predicts 5, rated 5 — no surprise
+            Score(listing_id=missed.id, score=95, model="m"),  # predicts 5, rated 1 — surprise 4
+        ]
+    )
+    ctx = ScoringContext.load(paths, store, ScoringConfig())
+    assert [lst.title for lst, _ in ctx.examples] == ["Badly missed", "Close call"]
+
+
+def _context(**kw):
+    base = dict(profile="P", preferences="Q", cv="C", examples=[], example_scores={})
+    base.update(kw)
+    return ScoringContext(**base)
+
+
+def test_score_batch_returns_scores_without_touching_the_store(env):
+    _, store = env
+    one = L(1)
+    store.upsert_listings([one])
+    scores = score_batch([one], _context(), _scoring_runner([one], 64), ScoringConfig())
+    assert [s.score for s in scores] == [64]
+    assert store.get_score(one.id) is None
+
+
+def test_score_batch_raises_on_unusable_output():
+    with pytest.raises(ValueError):
+        score_batch([L(1)], _context(), lambda *a: "garbage", ScoringConfig())
+
+
+def test_score_listings_uses_an_injected_context_instead_of_the_files(env):
+    paths, store = env
+    one = L(1)
+    store.upsert_listings([one])
+    prompts = []
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return _scoring_runner([one], 50)(prompt, model, schema)
+
+    ctx = _context(profile="INJECTED-PERSON", preferences="CANDIDATE-RULES")
+    score_listings(store, paths, ScoringConfig(), runner, TODAY, context=ctx)
+    assert "INJECTED-PERSON" in prompts[0] and "CANDIDATE-RULES" in prompts[0]
+    # the workspace files (PROFILE / PREFS / CV) were never read
+    assert "PROFILE" not in prompts[0] and "PREFS" not in prompts[0]

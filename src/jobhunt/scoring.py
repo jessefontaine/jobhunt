@@ -198,6 +198,62 @@ def claude_runner(prompt: str, model: str, schema: dict | None) -> str:
     return proc.stdout
 
 
+@dataclass(frozen=True)
+class ScoringContext:
+    """Everything a scoring prompt needs besides the listings themselves.
+
+    `score_listings` builds one from the workspace by default; cross-validation injects its
+    own so a fold never shows a listing the rules (or the examples) already learned from.
+    """
+
+    profile: str
+    preferences: str
+    cv: str
+    examples: list[tuple[Listing, Rating]]  # surprise-sorted: the worst misses survive truncation
+    example_scores: dict[str, Score]
+
+    @classmethod
+    def load(cls, paths: Paths, store: Store, cfg: ScoringConfig) -> ScoringContext:
+        # Over-fetch so a batch can drop examples for listings it contains (a rescored listing
+        # must not see its own rating) and still have `cfg.examples` left.
+        examples = store.rated_examples(cfg.examples + cfg.batch_size)
+        scores = store.get_scores([lst.id for lst, _ in examples])
+        return cls(
+            profile=paths.profile.read_text() if paths.profile.exists() else "",
+            preferences=paths.preferences.read_text() if paths.preferences.exists() else "",
+            cv=paths.cv.read_text() if paths.cv.exists() else "",
+            examples=by_surprise(examples, scores),
+            example_scores=scores,
+        )
+
+
+def batch_prompt(batch: list[Listing], context: ScoringContext, cfg: ScoringConfig) -> str:
+    """The prompt for one batch, with any example for a listing in the batch dropped."""
+    ids = {lst.id for lst in batch}
+    shown = [ex for ex in context.examples if ex[0].id not in ids][: cfg.examples]
+    return build_prompt(
+        context.profile,
+        context.preferences,
+        context.cv,
+        shown,
+        batch,
+        scores=context.example_scores,
+    )
+
+
+def score_batch(
+    batch: list[Listing], context: ScoringContext, runner: Runner, cfg: ScoringConfig
+) -> list[Score]:
+    """One Claude call for one batch. Raises ValueError/RuntimeError if the output is unusable.
+
+    No store: the scores are returned, never saved. Cross-validation scores rated listings
+    that already have real scores, and must not overwrite them.
+    """
+    ids = {lst.id for lst in batch}
+    raw = runner(batch_prompt(batch, context, cfg), cfg.model, SCORE_SCHEMA)
+    return parse_response(raw, ids, cfg.model)
+
+
 @dataclass
 class ScoreRunResult:
     scored: int = 0
@@ -237,6 +293,7 @@ def score_listings(
     rescore: bool = False,
     include_rated: bool = False,
     listings: list[Listing] | None = None,
+    context: ScoringContext | None = None,
     progress: Progress = lambda msg: None,
 ) -> ScoreRunResult:
     """Score every unscored, unexpired listing in batches. One retry per batch.
@@ -257,32 +314,22 @@ def score_listings(
         pending = store.unscored_listings(today)
     if not pending:
         return result
-    profile = paths.profile.read_text() if paths.profile.exists() else ""
-    preferences = paths.preferences.read_text() if paths.preferences.exists() else ""
-    cv = paths.cv.read_text() if paths.cv.exists() else ""
-    # Over-fetch so a batch can drop examples for listings it contains (a rescored listing must
-    # not see its own rating) and still have `cfg.examples` left.
-    examples = store.rated_examples(cfg.examples + cfg.batch_size)
-    example_scores = store.get_scores([lst.id for lst, _ in examples])
-    examples = by_surprise(examples, example_scores)
+    context = context or ScoringContext.load(paths, store, cfg)
 
     batches = _chunks(pending, cfg.batch_size)
     verb = "rescoring" if rescore else "scoring"
     if not dry_run:
         progress(f"{verb} {len(pending)} listing(s) in {len(batches)} batch(es) with {cfg.model}…")
     for n, batch in enumerate(batches, 1):
-        ids = {lst.id for lst in batch}
-        shown = [ex for ex in examples if ex[0].id not in ids][: cfg.examples]
-        prompt = build_prompt(profile, preferences, cv, shown, batch, scores=example_scores)
         if dry_run:
-            print(prompt)
+            print(batch_prompt(batch, context, cfg))
             return result
         last_error = ""
         for attempt in range(2):
             if attempt:
                 progress(f"  batch {n}/{len(batches)}: retrying ({last_error[:80]})")
             try:
-                scores = parse_response(runner(prompt, cfg.model, SCORE_SCHEMA), ids, cfg.model)
+                scores = score_batch(batch, context, runner, cfg)
             except (ValueError, RuntimeError) as exc:
                 last_error = str(exc)
                 continue

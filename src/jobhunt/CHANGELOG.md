@@ -4,6 +4,10 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.8.0 — 2026-09-23
+- Scoring and preference learning can now be driven with inputs supplied by the caller, so a
+  run can be measured against ratings it was not allowed to see. No change to what you get today.
+
 ## 0.7.0 — 2026-09-22
 - Rated examples now carry the score they were given, in both the scoring prompt and the
   preference-learning prompt. Claude is told that where a score and a rating disagree the rating
