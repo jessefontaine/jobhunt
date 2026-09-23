@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 
 from jobhunt.config import Paths
-from jobhunt.models import Rating
+from jobhunt.models import Listing, Rating, Score
 from jobhunt.scoring import Runner, _extract_payload, format_rated
 from jobhunt.settings import PreferenceSettings
 from jobhunt.store import Store
@@ -223,8 +223,12 @@ def render_preferences(prefs: Preferences) -> str:
     return "\n\n".join(p for p in parts if p) + "\n"
 
 
-def _preferences_prompt(prefs: Preferences, store: Store, caps: PreferenceSettings) -> str:
-    rated = store.all_ratings()
+def _preferences_prompt(
+    prefs: Preferences,
+    rated: list[tuple[Listing, Rating]],
+    scores: dict[str, Score],
+    caps: PreferenceSettings,
+) -> str:
     return "\n".join(
         [
             preferences_instructions(caps),
@@ -238,9 +242,29 @@ def _preferences_prompt(prefs: Preferences, store: Store, caps: PreferenceSettin
             prefs.specifics or "(none)",
             "",
             "# Rated listings (most recent first)",
-            format_rated(rated, scores=store.get_scores([lst.id for lst, _ in rated])),
+            format_rated(rated, scores=scores),
         ]
     )
+
+
+def learn_rules(
+    prefs: Preferences,
+    rated: list[tuple[Listing, Rating]],
+    scores: dict[str, Score],
+    runner: Runner,
+    model: str,
+    caps: PreferenceSettings,
+) -> RuleSet | None:
+    """One Claude call: rules and specifics inferred from exactly the ratings given.
+
+    Nothing is read from the store and nothing is written to disk — a cross-validation fold
+    passes the ratings it is allowed to see. None when Claude's output is unusable.
+    """
+    try:
+        prompt = _preferences_prompt(prefs, rated, scores, caps)
+        return RuleSet.model_validate(_extract_payload(runner(prompt, model, RULE_SCHEMA)))
+    except (ValueError, ValidationError, RuntimeError):
+        return None
 
 
 def _bullets(rules: list[str]) -> str:
@@ -262,12 +286,10 @@ def regenerate_preferences(
     caps = caps or PreferenceSettings()
     pref_path = paths.preferences
     prefs = split_preferences(pref_path.read_text() if pref_path.exists() else "# Preferences\n")
-    try:
-        payload = _extract_payload(
-            runner(_preferences_prompt(prefs, store, caps), model, RULE_SCHEMA)
-        )
-        ruleset = RuleSet.model_validate(payload)
-    except (ValueError, ValidationError, RuntimeError):
+    rated = store.all_ratings()
+    scores = store.get_scores([lst.id for lst, _ in rated])
+    ruleset = learn_rules(prefs, rated, scores, runner, model, caps)
+    if ruleset is None:
         return False
     prefs.learned = _bullets(ruleset.rules)
     prefs.specifics = _bullets(ruleset.specifics)

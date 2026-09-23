@@ -6,6 +6,7 @@ import pytest
 from jobhunt.config import Paths
 from jobhunt.models import Listing, Rating, Score
 from jobhunt.ratings import (
+    learn_rules,
     learned_at,
     preferences_instructions,
     regenerate_preferences,
@@ -307,3 +308,71 @@ def test_preferences_prompt_shows_what_claude_scored_each_rated_listing(env):
 
 def test_preferences_instructions_say_what_to_do_with_those_scores():
     assert "you scored" in preferences_instructions(PreferenceSettings())
+
+
+def _ruleset_runner(seen=None):
+    """Answers a preferences prompt with two rules, recording the prompt it was given."""
+
+    def runner(prompt, model, schema):
+        if seen is not None:
+            seen.append(prompt)
+        return json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "structured_output": {"rules": ["Likes NeuroAI"], "specifics": ["Donders"]},
+            }
+        )
+
+    return runner
+
+
+def test_learn_rules_returns_the_ruleset_without_writing_anything(env):
+    paths, store = env
+    before = paths.preferences.read_text()
+    ruleset = learn_rules(
+        split_preferences(before),
+        store.all_ratings(),
+        {},
+        _ruleset_runner(),
+        "sonnet",
+        PreferenceSettings(),
+    )
+    assert ruleset.rules == ["Likes NeuroAI"]
+    assert ruleset.specifics == ["Donders"]
+    assert paths.preferences.read_text() == before
+
+
+def test_learn_rules_only_shows_claude_the_ratings_it_was_given(env):
+    paths, store = env
+    rated = store.all_ratings()
+    only = [pair for pair in rated if pair[0].title == "NeuroAI PhD"]
+    left_out = [pair for pair in rated if pair[0].title != "NeuroAI PhD"]
+    seen = []
+
+    learn_rules(
+        split_preferences(paths.preferences.read_text()),
+        only,
+        {},
+        _ruleset_runner(seen),
+        "sonnet",
+        PreferenceSettings(),
+    )
+    assert "NeuroAI PhD" in seen[0]
+    for lst, _ in left_out:
+        assert lst.title not in seen[0]
+
+
+def test_learn_rules_returns_none_when_the_output_is_unusable(env):
+    paths, store = env
+    assert (
+        learn_rules(
+            split_preferences(paths.preferences.read_text()),
+            store.all_ratings(),
+            {},
+            lambda *a: "garbage",
+            "sonnet",
+            PreferenceSettings(),
+        )
+        is None
+    )

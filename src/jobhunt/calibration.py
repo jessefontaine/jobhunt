@@ -31,6 +31,11 @@ def surprise(score: int, rating: int) -> int:
     return abs(expected_rating(score) - rating)
 
 
+def mean_surprise(pairs: list[tuple[int, int]]) -> float:
+    """Average gap between the band a score promised and the rating it got. 0 when empty."""
+    return sum(surprise(s, r) for s, r in pairs) / len(pairs) if pairs else 0.0
+
+
 def _ranks(values: list[float]) -> list[float]:
     """Ranks from 1 up, tied values sharing the average of the ranks they span."""
     order = sorted(range(len(values)), key=lambda i: values[i])

@@ -9,6 +9,7 @@ import pytest
 from jobhunt.calibration import (
     agreement,
     expected_rating,
+    mean_surprise,
     render,
     spearman,
     surprise,
@@ -212,3 +213,12 @@ def test_a_disagreement_carries_what_each_side_said(ws):
     only = ws.disagreements()[0]
     assert (only.score.score, only.rating.rating, only.surprise) == (92, 1, 4)
     assert only.over_scored is True
+
+
+def test_mean_surprise_averages_the_gap_between_band_and_rating():
+    # 90 is "apply" and predicts 5, rated 3 → 2. 50 is "maybe" and predicts 3, rated 3 → 0.
+    assert mean_surprise([(90, 3), (50, 3)]) == pytest.approx(1.0)
+
+
+def test_mean_surprise_is_zero_without_pairs():
+    assert mean_surprise([]) == 0.0
