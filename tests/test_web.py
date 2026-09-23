@@ -614,3 +614,11 @@ def test_settings_page_exposes_the_cross_validation_budget(client, ws):
     from jobhunt.workspace import Workspace
 
     assert Workspace.open(ws.paths.root).settings.calibration.eval_cap == 30
+
+
+def test_calibration_page_shows_how_sure_the_last_verdict_is(client, ws):
+    _many_ratings(ws)
+    client.post("/actions/cross-validate")
+    page = client.get("/calibration").text
+    assert "of resamples" in page
+    assert "effective" in page

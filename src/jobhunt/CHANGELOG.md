@@ -9,6 +9,8 @@ banner.
   minutes is shown before the button, and the last verdict stays on the page afterwards.
 - Long jobs can be stopped. A Stop button halts a cross-validation between Claude calls, so the
   worst case is one call already in flight, and nothing is written.
+- The last verdict on the Calibration page carries its interval, how far tied ratings discount
+  the sample, and how often the candidate won when the listings were resampled.
 - Settings: the cross-validation folds, evaluation cap, rating floor, call ceiling and the
   margins a rewrite has to clear.
 
