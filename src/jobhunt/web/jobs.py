@@ -27,10 +27,19 @@ class Job:
     error: str | None = None
     started_at: datetime = field(default_factory=datetime.now)
     finished_at: datetime | None = None
+    _stop: threading.Event = field(default_factory=threading.Event, repr=False)
 
     @property
     def running(self) -> bool:
         return self.status == "running"
+
+    def cancel(self) -> None:
+        """Ask the job to stop. A cancellable job checks this between its Claude calls, so the
+        worst case is one call already in flight."""
+        self._stop.set()
+
+    def stopping(self) -> bool:
+        return self._stop.is_set()
 
     def as_dict(self) -> dict:
         return {
@@ -39,6 +48,7 @@ class Job:
             "status": self.status,
             "lines": list(self.lines),
             "error": self.error,
+            "stopping": self.stopping(),
             "started_at": self.started_at.isoformat(timespec="seconds"),
             "finished_at": (
                 self.finished_at.isoformat(timespec="seconds") if self.finished_at else None
@@ -63,7 +73,14 @@ class JobRunner:
     def get(self, job_id: int) -> Job | None:
         return next((job for job in self._jobs if job.id == job_id), None)
 
-    def start(self, name: str, fn: Callable[[Progress], object]) -> Job:
+    def start(
+        self, name: str, fn: Callable[..., object], cancellable: bool = False
+    ) -> Job:
+        """Run `fn(progress)`, or `fn(progress, should_stop)` when `cancellable`.
+
+        An explicit flag rather than inspecting the signature, so every existing caller keeps
+        the one-argument form it already has.
+        """
         with self._lock:
             if self._jobs and self._jobs[-1].running:
                 raise JobBusy(f"{self._jobs[-1].name} is still running")
@@ -72,15 +89,17 @@ class JobRunner:
             self._jobs.append(job)
             del self._jobs[:-KEEP]
         if self.background:
-            threading.Thread(target=self._run, args=(job, fn), daemon=True).start()
+            threading.Thread(
+                target=self._run, args=(job, fn, cancellable), daemon=True
+            ).start()
         else:
-            self._run(job, fn)
+            self._run(job, fn, cancellable)
         return job
 
     @staticmethod
-    def _run(job: Job, fn: Callable[[Progress], object]) -> None:
+    def _run(job: Job, fn: Callable[..., object], cancellable: bool = False) -> None:
         try:
-            fn(job.lines.append)
+            fn(job.lines.append, job.stopping) if cancellable else fn(job.lines.append)
         except Exception as exc:  # the job must always reach a final state
             job.error = f"{type(exc).__name__}: {exc}"
             job.lines.append(job.error)

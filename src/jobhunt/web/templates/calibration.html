@@ -55,4 +55,74 @@
    listing so far.</p>
 {% endif %}
 {% endif %}
+
+<h2>Would new preferences actually score better?</h2>
+<p class="muted">Rewriting the rules from every rating and then checking them against those same
+   ratings measures memory, not skill. This splits your ratings into {{ settings.calibration.folds }}
+   folds instead: each one learns rules from the others and scores only its own held-out listings,
+   against the rules you have now, with the same profile, examples and batches. The new rules are
+   written only if they win. Unlike the rest of this page, it calls Claude — a lot.</p>
+
+{% if refusal %}
+<p class="muted">{{ refusal }}</p>
+{% else %}
+<section class="stats">
+  <div><b>{{ plan.total_calls }}</b> claude calls</div>
+  <div><b>~{{ plan.input_tokens // 1000 }}k</b> input tokens</div>
+  <div><b>{{ plan.minutes[0] }}–{{ plan.minutes[1] }}</b> minutes</div>
+  <div><b>{{ plan.n_eval }}</b> held out of {{ plan.n_ratings }}</div>
+</section>
+{% for warning in plan.warnings %}<p class="muted">! {{ warning }}</p>{% endfor %}
+{% if job and job.name == "cross-validate" and job.running %}
+<form method="post" action="/jobs/{{ job.id }}/cancel">
+  <button type="submit">Stop{{ " (stopping…)" if job.stopping() }}</button>
+</form>
+<p class="muted">It stops after the call already in flight, and writes nothing.</p>
+{% else %}
+<form method="post" action="/actions/cross-validate">
+  <button type="submit" {{ "disabled" if busy }}>Cross-validate &amp; update preferences</button>
+  <label class="muted"><input type="checkbox" name="force" value="1">
+    write the new rules even if they lose</label>
+</form>
+{% endif %}
+{% endif %}
+
+{% if last %}
+<h3>Last run <small class="muted">{{ last.ran_at[:10] }}</small></h3>
+<table class="bands">
+  <tr><th>rules</th><th>rank correlation</th><th>band drift</th></tr>
+  <tr>
+    <td>current</td>
+    <td>{{ "n/a" if last.current_rho is none else "%.2f"|format(last.current_rho) }}</td>
+    <td>{{ "%.2f"|format(last.current_surprise) }}</td>
+  </tr>
+  <tr>
+    <td>candidate</td>
+    <td>{{ "n/a" if last.candidate_rho is none else "%.2f"|format(last.candidate_rho) }}</td>
+    <td>{{ "%.2f"|format(last.candidate_surprise) }}</td>
+  </tr>
+  <tr>
+    <td><b>change</b></td>
+    <td><b>{{ "n/a" if last.delta_rho is none else "%+.2f"|format(last.delta_rho) }}</b>
+        {% if last.delta_low is not none %}
+        <small class="muted">{{ "%+.2f"|format(last.delta_low) }} to
+        {{ "%+.2f"|format(last.delta_high) }}</small>{% endif %}</td>
+    <td><b>{{ "%+.2f"|format(last.delta_surprise) }}</b></td>
+  </tr>
+</table>
+<p>Last cross-validation on {{ last.n }} held-out listing(s): {{ last.reason }}</p>
+{% if last.effective_n %}
+<p class="muted">Ratings tie — most listings are a 1 — and rank correlation reads pairs, so those
+   {{ last.n }} carry the information of about {{ last.effective_n }} (effective). That is why the
+   interval beside the change is as wide as it is. The candidate came out ahead in
+   {{ "%.0f"|format(last.positive * 100) }}% of resamples, which covers which listings landed in
+   the held-out set — not how much a second Claude run would have moved the scores.</p>
+{% else %}
+<p class="muted">This verdict was recorded before the intervals existed, so there is nothing to
+   say about how much of it was the sample. The next run will carry them.</p>
+{% endif %}
+{% if last.dropped %}
+<p class="muted">{{ last.dropped }} listing(s) were dropped to failed batches, in both arms.</p>
+{% endif %}
+{% endif %}
 {% endblock %}

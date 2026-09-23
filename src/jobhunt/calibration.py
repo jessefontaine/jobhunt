@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 # The bands the scoring prompt describes, highest first.
@@ -29,6 +30,42 @@ def expected_rating(score: int) -> int:
 def surprise(score: int, rating: int) -> int:
     """How far the rating landed from the band's prediction — 0 when they agree, 4 at worst."""
     return abs(expected_rating(score) - rating)
+
+
+def effective_n(ratings: list[int]) -> int:
+    """How many listings this sample behaves like, once tied ratings are discounted.
+
+    Spearman reads pairs, and a pair of listings you rated the same says nothing about the
+    ranking. Rating a job hunt is lopsided — most listings are a 1 — so `n` badly overstates
+    how much a correlation rests on. This is the size of an untied sample with the same number
+    of informative pairs.
+    """
+    counts: dict[int, int] = {}
+    for rating in ratings:
+        counts[rating] = counts.get(rating, 0) + 1
+    n = len(ratings)
+    informative = n * (n - 1) // 2 - sum(k * (k - 1) // 2 for k in counts.values())
+    if informative <= 0:
+        return 0
+    return round((1 + (1 + 8 * informative) ** 0.5) / 2)
+
+
+# Spearman's z is slightly wider than Pearson's; the usual correction for it.
+_Z_SPREAD = 1.03
+_Z_95 = 1.96
+
+
+def rho_interval(rho: float | None, n: int) -> tuple[float, float] | None:
+    """A rough 95% interval for a rank correlation measured on `n` listings.
+
+    Fisher's transform, so the interval is asymmetric near ±1 and never leaves [-1, 1]. Pass
+    `effective_n` rather than the raw count: with ties the raw count flatters the estimate.
+    """
+    if rho is None or n <= 3:
+        return None
+    z = math.atanh(max(min(rho, 0.999999), -0.999999))
+    spread = _Z_95 * _Z_SPREAD / math.sqrt(n - 3)
+    return (math.tanh(z - spread), math.tanh(z + spread))
 
 
 def mean_surprise(pairs: list[tuple[int, int]]) -> float:

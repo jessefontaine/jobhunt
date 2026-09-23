@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 from typer.testing import CliRunner
@@ -365,3 +366,105 @@ def test_calibration_counts_ratings_given_without_a_score(root):
 
     assert result.exit_code == 0, result.output
     assert "1 rated listing had no score" in result.output
+
+
+def _rated_root(root, n):
+    """A workspace whose store already holds `n` rated, scored listings."""
+    from jobhunt.config import Paths
+    from jobhunt.models import Listing, Rating, Score
+    from jobhunt.store import Store
+
+    paths = Paths(root)
+    (root / "profile").mkdir(exist_ok=True)
+    paths.profile.write_text("PROFILE")
+    paths.preferences.write_text("# Preferences\n\n## Manual\n\n- mine\n")
+    store = Store(paths.db)
+    for i in range(n):
+        lst = Listing(source="s", title=f"Job {i}", employer=f"Uni {i}", url=f"https://x.org/j/{i}")
+        store.upsert_listings([lst])
+        store.save_rating(Rating(listing_id=lst.id, rating=(i % 5) + 1))
+        store.save_scores([Score(listing_id=lst.id, score=50, model="m")])
+    return root
+
+
+def _cv_runner(counter):
+    """Scores a listing by the rating it was given, so the candidate rules always win."""
+
+    def runner(prompt, model, schema):
+        counter.append(prompt)
+        if "rules" in json.dumps(schema):
+            return json.dumps(
+                {"type": "result", "structured_output": {"rules": ["CV-RULE"], "specifics": []}}
+            )
+        batch = prompt.partition("# Listings to score")[2]
+        ids = re.findall(r'"id": "([0-9a-f]{12})"', batch)
+        candidate = "CV-RULE" in prompt.partition("# Listings to score")[0]
+        ranks = {i: n for n, i in enumerate(ids)}
+        return json.dumps(
+            {
+                "type": "result",
+                "structured_output": {
+                    "scores": [
+                        {
+                            "id": i,
+                            "score": 20 + ranks[i] * 15 if candidate else 60 - ranks[i] * 2,
+                            "role_type": "phd",
+                            "area_tags": [],
+                            "why": "w",
+                            "concerns": "",
+                        }
+                        for i in ids
+                    ]
+                },
+            }
+        )
+
+    return runner
+
+
+def test_learn_dry_run_prices_the_cross_validation_without_calling_claude(root, monkeypatch):
+    _rated_root(root, 25)
+    calls = []
+    import jobhunt.cli as cli
+
+    monkeypatch.setattr(cli, "RUNNER", _cv_runner(calls))
+    result = run(root, "learn", "--cross-validate", "--dry-run")
+    assert result.exit_code == 0, result.output
+    assert "claude calls" in result.output and "minutes" in result.output
+    assert calls == []
+
+
+def test_learn_cross_validate_reports_and_writes(root, monkeypatch):
+    _rated_root(root, 25)
+    calls = []
+    import jobhunt.cli as cli
+
+    monkeypatch.setattr(cli, "RUNNER", _cv_runner(calls))
+    result = run(root, "learn", "--cross-validate", "--yes")
+    assert result.exit_code == 0, result.output
+    assert "candidate" in result.output and "current" in result.output
+    assert "CV-RULE" in (root / "profile" / "preferences.md").read_text()
+    assert "- mine" in (root / "profile" / "preferences.md").read_text()
+
+
+def test_learn_cross_validate_refuses_with_too_few_ratings(root, monkeypatch):
+    _rated_root(root, 5)
+    calls = []
+    import jobhunt.cli as cli
+
+    monkeypatch.setattr(cli, "RUNNER", _cv_runner(calls))
+    result = run(root, "learn", "--cross-validate", "--yes")
+    assert result.exit_code == 1
+    assert "at least 20" in result.output
+    assert calls == []
+
+
+def test_calibration_reports_the_last_cross_validation(root, monkeypatch):
+    _rated_root(root, 25)
+    import jobhunt.cli as cli
+
+    monkeypatch.setattr(cli, "RUNNER", _cv_runner([]))
+    run(root, "learn", "--cross-validate", "--yes")
+    result = run(root, "calibration")
+    assert result.exit_code == 0, result.output
+    assert "Last cross-validation" in result.output

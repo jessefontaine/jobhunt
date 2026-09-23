@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from jobhunt import pipeline
+from jobhunt import crossval, pipeline
 from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
@@ -219,6 +219,27 @@ class Workspace:
         ]
         out = [d for d in out if d.surprise >= floor]
         return sorted(out, key=lambda d: -d.surprise)[:limit]
+
+    def plan_cross_validation(self) -> crossval.Plan:
+        """What a cross-validation run would cost. No Claude call; raises if it cannot run."""
+        return crossval.plan(self.paths, self.store, self.settings)
+
+    def cross_validate(
+        self,
+        progress: Progress = _silent,
+        should_stop: crossval.StopCheck = crossval._never,
+        force: bool = False,
+    ) -> crossval.Result:
+        """Measure a preferences rewrite against held-out ratings, and write it if it earns it."""
+        return crossval.cross_validate(
+            self.paths,
+            self.store,
+            self.runner,
+            self.settings,
+            progress=progress,
+            should_stop=should_stop,
+            force=force,
+        )
 
     def learn(self, progress: Progress = _silent) -> bool:
         """Regenerate `## Learned` in preferences.md from every rating (one Claude call)."""

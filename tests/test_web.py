@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import date
 from pathlib import Path
@@ -542,3 +543,113 @@ def test_calibration_page_lists_the_listings_the_scores_got_wrong(client, ws):
 
 def test_calibration_is_reachable_from_every_page(client):
     assert 'href="/calibration"' in client.get("/").text
+
+
+def _many_ratings(ws, n=25):
+    """Enough rated, scored listings for a cross-validation to be allowed to run."""
+    from jobhunt.models import Listing, Rating, Score
+
+    store = ws.store
+    for i in range(n):
+        lst = Listing(source="s", title=f"CV job {i}", employer=f"Uni {i}", url=f"https://c.org/{i}")
+        store.upsert_listings([lst])
+        store.save_rating(Rating(listing_id=lst.id, rating=(i % 5) + 1))
+        store.save_scores([Score(listing_id=lst.id, score=50, model="m")])
+    return ws
+
+
+def test_calibration_page_prices_a_cross_validation_before_offering_it(client, ws):
+    _many_ratings(ws)
+    page = client.get("/calibration").text
+    assert "claude calls" in page and "minutes" in page
+    assert "Cross-validate" in page
+
+
+def test_calibration_page_says_why_a_cross_validation_cannot_run_yet(client, ws):
+    fetched(ws)
+    page = client.get("/calibration").text
+    assert "at least 20" in page
+    assert "claude calls" not in page
+
+
+def test_cross_validate_action_runs_and_records_its_verdict(client, ws):
+    _many_ratings(ws)
+    before = ws.paths.preferences.read_text()
+
+    assert client.post("/actions/cross-validate").status_code == 200
+
+    job = client.get("/jobs/1").json()
+    assert job["status"] == "done", job
+    assert job["name"] == "cross-validate"
+    assert any("fold 1/5" in line for line in job["lines"])
+    # the fake runner scores both arms the same, so the gate finds nothing to accept
+    assert ws.paths.preferences.read_text() == before
+    assert "Last cross-validation" in client.get("/calibration").text
+
+
+def test_cancelling_a_finished_job_is_not_an_error(client, ws):
+    _many_ratings(ws)
+    client.post("/actions/cross-validate")
+    assert client.post("/jobs/1/cancel").status_code == 200
+
+
+def test_cancelling_an_unknown_job_is_a_404(client):
+    assert client.post("/jobs/99/cancel").status_code == 404
+
+
+def test_settings_page_exposes_the_cross_validation_budget(client, ws):
+    page = client.get("/settings").text
+    assert 'name="calibration.eval_cap"' in page
+    assert 'name="calibration.max_calls"' in page
+
+    form = {
+        f"{section}.{key}": str(value)
+        for section, values in ws.settings.model_dump(mode="json").items()
+        for key, value in values.items()
+        if not isinstance(value, bool)
+    }
+    form["calibration.eval_cap"] = "30"
+    form["calibration.max_calls"] = "24"
+    assert client.post("/settings", data=form).status_code == 200
+
+    from jobhunt.workspace import Workspace
+
+    assert Workspace.open(ws.paths.root).settings.calibration.eval_cap == 30
+
+
+def test_calibration_page_shows_how_sure_the_last_verdict_is(client, ws):
+    _many_ratings(ws)
+    client.post("/actions/cross-validate")
+    page = client.get("/calibration").text
+    assert "of resamples" in page
+    assert "effective" in page
+
+
+def test_calibration_page_renders_a_verdict_from_an_older_engine(client, ws):
+    """A workspace that cross-validated on 0.9.0 has no intervals stored; the page must not
+    invent them, and must not break."""
+    _many_ratings(ws)
+    ws.store.set_meta(
+        "calibration_cv",
+        json.dumps(
+            {
+                "ran_at": "2026-09-23T18:35:36",
+                "n": 50,
+                "current_rho": 0.63,
+                "candidate_rho": 0.71,
+                "delta_rho": 0.08,
+                "current_surprise": 0.26,
+                "candidate_surprise": 0.26,
+                "delta_surprise": 0.0,
+                "dropped": 0,
+                "accepted": True,
+                "written": True,
+                "cancelled": False,
+                "reason": "accepted: +0.08 rank correlation out of sample, bands +0.00.",
+            }
+        ),
+    )
+    page = client.get("/calibration")
+    assert page.status_code == 200
+    assert "+0.08" in page.text
+    assert "of resamples" not in page.text

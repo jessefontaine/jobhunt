@@ -65,6 +65,22 @@ also how you find the right shortlist threshold. It needs ~10 ratings to mean an
 **Calibration** page in the UI shows the same thing and adds the listings the scoring got most
 wrong.
 
+Running `learn` rewrites the rules from every rating, so checking those rules against those
+same ratings measures memory, not skill. `uv run jobhunt learn --cross-validate` measures
+generalisation instead: it splits your ratings into folds, learns rules from all but one fold,
+scores only that held-out fold with them, and compares against the rules you have now under
+otherwise identical conditions. The new rules are written only if the held-out correlation
+improves — and only after a final pass over every rating, because a fold's rules are for
+measuring, never for keeping.
+
+It calls Claude many times, so it is priced first: `--dry-run` prints the call count, token
+estimate and minutes without calling anything, a run over `calibration.max_calls` is refused
+rather than started, and the Calibration page shows the same numbers beside the button. The
+evaluation set is capped (`calibration.eval_cap`) because its cost grows with the number of
+listings scored while its precision only grows with the square root — so 400 ratings cost the
+same sixteen calls as 40. The training half is not capped: every fold still learns from every
+rating outside it.
+
 Those disagreements feed back in on their own: every rated example shown to the scorer and to
 the preference learner now carries the score it was given, and the examples the scorer got most
 wrong are the ones kept when a prompt has room for only a few. Claude is told the rating is
@@ -110,7 +126,8 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 - **Calibration** — the same report `jobhunt calibration` prints, plus the listings the scoring
   got most wrong: over-scored ones name a dealbreaker it keeps missing, under-scored ones are the
   roles the threshold nearly hid from you. Each comes with its rating and note box, and the note
-  is what the next `learn` run reads.
+  is what the next `learn` run reads. At the bottom, what a cross-validation would cost and a
+  button to run one, with the last verdict and a Stop that halts between Claude calls.
 - **Profile / Preferences / CV / Sources** — edit the workspace files in place
   (`sources.yaml` is validated before saving).
 - **Feedback** — *Report a bug* / *Suggest a feature* open a prefilled issue form on GitHub
@@ -135,6 +152,7 @@ editing, to your network.
 | `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
 | `jobhunt sources` | list sources and whether they are enabled |
 | `jobhunt learn` | regenerate the learned preferences from every rating (one Claude call) |
+| `jobhunt learn --cross-validate` | measure the rewrite on held-out ratings first, and write it only if it scores better (`--dry-run` prices it, `--force` writes anyway) |
 | `jobhunt update [--check]` | update the engine from GitHub, or report why it cannot be checked |
 | `jobhunt serve [--host H] [--port N] [--no-open]` | run the browser UI |
 

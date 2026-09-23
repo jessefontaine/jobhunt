@@ -8,9 +8,11 @@ import pytest
 
 from jobhunt.calibration import (
     agreement,
+    effective_n,
     expected_rating,
     mean_surprise,
     render,
+    rho_interval,
     spearman,
     surprise,
 )
@@ -222,3 +224,37 @@ def test_mean_surprise_averages_the_gap_between_band_and_rating():
 
 def test_mean_surprise_is_zero_without_pairs():
     assert mean_surprise([]) == 0.0
+
+
+def test_effective_n_is_the_sample_size_when_no_two_ratings_tie():
+    assert effective_n([1, 2, 3, 4, 5]) == 5
+
+
+def test_effective_n_shrinks_when_the_ratings_tie_heavily():
+    # A real spread: 35 ones among 50. Fewer than half the pairs carry any ranking
+    # information at all, so the 50 behave like ~35.
+    assert effective_n([1] * 35 + [2] * 9 + [3] + [4] * 4 + [5]) == 35
+
+
+def test_effective_n_is_zero_when_every_rating_is_the_same():
+    assert effective_n([3, 3, 3, 3]) == 0
+
+
+def test_rho_interval_widens_as_the_sample_shrinks():
+    low_n, high_n = rho_interval(0.63, 15), rho_interval(0.63, 200)
+    assert (low_n[1] - low_n[0]) > (high_n[1] - high_n[0])
+
+
+def test_rho_interval_brackets_the_estimate():
+    low, high = rho_interval(0.63, 50)
+    assert low < 0.63 < high
+
+
+def test_rho_interval_never_leaves_the_correlation_range():
+    low, high = rho_interval(0.97, 12)
+    assert -1.0 <= low <= high <= 1.0
+
+
+def test_rho_interval_is_none_without_a_correlation_or_a_sample():
+    assert rho_interval(None, 50) is None
+    assert rho_interval(0.5, 3) is None
