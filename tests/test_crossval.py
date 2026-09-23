@@ -380,3 +380,15 @@ def test_workspace_runs_a_cross_validation_and_writes_the_rules(cv_ws):
     assert result.accepted and result.written
     assert CANDIDATE in cv_ws.paths.preferences.read_text()
     assert any("fold 1/5" in m for m in lines)
+
+
+def test_sample_keeps_the_rare_high_rating_in_a_skewed_fold():
+    # A real fold: mostly 1s, one 5. The listing the whole pipeline exists to find must be
+    # scored, not dropped by the cap — an even stride that never reaches the last index
+    # silently evaluates only the rejects.
+    ratings = [1] * 21 + [2] * 5 + [3] + [5]
+    fold = [(L(i), Rating(listing_id=L(i).id, rating=r)) for i, r in enumerate(ratings)]
+    taken = sample(fold, 10)
+    assert len(taken) == 10
+    assert max(r.rating for _, r in taken) == 5
+    assert min(r.rating for _, r in taken) == 1

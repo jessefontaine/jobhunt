@@ -93,12 +93,19 @@ def deal(rated: list[Pair], folds: int) -> list[list[Pair]]:
 
 
 def sample(fold: list[Pair], cap: int) -> list[Pair]:
-    """At most `cap` of the fold, taken at an even stride through its rating order."""
+    """At most `cap` of the fold, taken at an even stride across its whole rating order.
+
+    The stride spans both ends. Real ratings are heavily skewed towards 1, so a stride that
+    stopped short of the last index would drop the rare 4s and 5s every time and quietly
+    measure only how well the scorer rejects things.
+    """
     if len(fold) <= cap:
         return list(fold)
     ordered = sorted(fold, key=lambda p: (p[1].rating, p[0].id))
-    step = len(ordered) / cap
-    return [ordered[int(n * step)] for n in range(cap)]
+    if cap == 1:
+        return [ordered[-1]]  # one slot: spend it on the highest rating, not the commonest
+    step = (len(ordered) - 1) / (cap - 1)
+    return [ordered[round(n * step)] for n in range(cap)]
 
 
 # -- planning ---------------------------------------------------------------
