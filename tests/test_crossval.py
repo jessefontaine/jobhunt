@@ -8,6 +8,7 @@ import pytest
 
 from jobhunt.config import Paths, ScoringConfig
 from jobhunt.crossval import (
+    CV_META,
     LearnFailed,
     NotEnoughRatings,
     TooExpensive,
@@ -449,3 +450,31 @@ def test_gate_rejects_the_gain_that_used_to_squeak_through(env):
     # sample alone can move the number, so it now reports instead of writing.
     accepted, why = gate(0.077, 0.0, CalibrationSettings())
     assert not accepted and "margin" in why
+
+
+def test_last_run_tolerates_a_verdict_stored_before_the_intervals_existed(env):
+    _, store = env
+    store.set_meta(
+        CV_META,
+        json.dumps(
+            {
+                "ran_at": "2026-09-23T18:35:36",
+                "n": 50,
+                "current_rho": 0.63,
+                "candidate_rho": 0.71,
+                "delta_rho": 0.08,
+                "current_surprise": 0.26,
+                "candidate_surprise": 0.26,
+                "delta_surprise": 0.0,
+                "dropped": 0,
+                "accepted": True,
+                "written": True,
+                "cancelled": False,
+                "reason": "accepted: +0.08 rank correlation out of sample, bands +0.00.",
+            }
+        ),
+    )
+    last = last_run(store)
+    assert last["delta_rho"] == 0.08  # what it did record still reads
+    assert last["effective_n"] is None  # what it could not know says so
+    assert last["delta_low"] is None and last["positive"] is None

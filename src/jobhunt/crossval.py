@@ -553,10 +553,15 @@ def _summary(result: Result) -> dict:
     }
 
 
+# Fields a verdict from an older engine cannot carry. None, not zero: the run did not measure
+# these, and a page that printed "0% of resamples" would be stating a result nobody computed.
+_UNMEASURED = {"effective_n": None, "delta_low": None, "delta_high": None, "positive": None}
+
+
 def last_run(store: Store) -> dict | None:
     """The last run's verdict, for the Calibration page and the `calibration` report."""
     raw = store.get_meta(CV_META)
-    return json.loads(raw) if raw else None
+    return {**_UNMEASURED, **json.loads(raw)} if raw else None
 
 
 def _rho(value: float | None) -> str:
