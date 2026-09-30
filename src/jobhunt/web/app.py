@@ -403,7 +403,9 @@ def create_app(
     def post_status(
         listing_id: str = Form(...),
         status: str = Form(..., pattern="^(" + "|".join(STATUSES) + ")$"),
+        next: str = Form(""),
     ):
+        """JSON for the card's script; a redirect back to `next` for a plain form submit."""
         store = ws.store
         if store.get_listing(listing_id) is None:
             return JSONResponse({"error": "no such listing"}, status_code=404)
@@ -412,6 +414,9 @@ def create_app(
             event, changed = current, False
         else:
             event, changed = ws.set_status(listing_id, status), True
+        if next:
+            local = next.startswith("/") and not next.startswith("//")
+            return RedirectResponse(next if local else "/", status_code=303)
         return {
             "listing_id": listing_id,
             "status": status,

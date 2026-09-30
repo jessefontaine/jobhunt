@@ -4,6 +4,13 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.11.2 — 2026-09-30
+- The Application dropdown now has a Send button next to it. It stays grey until you pick a
+  different status and only then saves it, with a link to the Applied page once it has.
+- Fixed for real: a browser that cached the old script kept using it even after 0.11.1, because
+  a normal reload does not fetch it again. The script and stylesheet addresses now carry the
+  version, so every update loads fresh copies. The Send button also works without the script.
+
 ## 0.11.1 — 2026-09-30
 - Fixed: after an update the browser could keep running the previous version's script, so new
   controls such as the Application dropdown showed up but did nothing. The UI's script and

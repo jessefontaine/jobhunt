@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_card.html" import card %}
+{% from "_card.html" import card with context %}
 {% block title %}Applied · jobhunt{% endblock %}
 {% block content %}
 <h1>Applied <small class="muted">{{ total }}</small></h1>

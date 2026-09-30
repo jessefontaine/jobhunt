@@ -666,7 +666,7 @@ def test_status_post_tracks_an_application_and_moves_it_to_applied(client, ws):
     assert "PhD vision" not in client.get("/queue").text
     applied = client.get("/applied").text
     assert "PhD vision" in applied
-    assert '<option value="applied" selected>' in applied
+    assert '<option value="applied" data-saved selected>' in applied
     assert "## Applications" in ws.paths.shortlist.read_text()
     again = client.post("/status", data={"listing_id": lid, "status": "applied"})
     assert again.json()["changed"] is False
@@ -748,3 +748,41 @@ def test_static_files_are_revalidated_so_an_update_reaches_the_browser(client):
         assert r.headers["cache-control"] == "no-cache"
         again = client.get(path, headers={"if-none-match": r.headers["etag"]})
         assert again.status_code == 304
+
+
+def test_static_urls_carry_the_version_so_an_old_cache_entry_is_never_reused(client):
+    page = client.get("/").text
+    assert 'src="/static/app.js?v=0.2.0"' in page
+    assert 'href="/static/style.css?v=0.2.0"' in page
+
+
+def test_status_has_a_send_button_that_knows_the_saved_value(client, ws):
+    fetched(ws)
+    page = client.get("/queue").text
+    assert '<form class="track" method="post" action="/status"' in page
+    assert '<option value="none" data-saved selected>' in page
+    assert '<button type="submit" class="send">Send</button>' in page
+
+
+def test_status_form_without_script_redirects_back(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "PhD vision")
+    r = client.post(
+        "/status",
+        data={"listing_id": lid, "status": "applied", "next": "/queue"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert ws.store.get_status(lid).status == "applied"
+    assert "PhD vision" in client.get("/applied").text
+
+
+def test_status_form_never_redirects_off_site(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "PhD vision")
+    r = client.post(
+        "/status",
+        data={"listing_id": lid, "status": "applied", "next": "//evil.example"},
+        follow_redirects=False,
+    )
+    assert r.headers["location"] == "/"

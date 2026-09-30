@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_card.html" import card %}
+{% from "_card.html" import card with context %}
 {% block title %}Calibration · jobhunt{% endblock %}
 {% block content %}
 <h1>Calibration <small class="muted">{{ result.n }} rated listing{{ "" if result.n == 1 else "s" }}</small></h1>

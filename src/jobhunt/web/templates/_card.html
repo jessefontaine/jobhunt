@@ -29,14 +29,17 @@
   </form>
   {% if statuses %}
   {% set current = item.status.status if item.status else "none" %}
-  <form class="track" data-id="{{ lst.id }}">
+  <form class="track" method="post" action="/status" data-id="{{ lst.id }}">
+    <input type="hidden" name="listing_id" value="{{ lst.id }}">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
     <label>Application
       <select name="status">
       {% for s in statuses %}
-        <option value="{{ s }}"{% if s == current %} selected{% endif %}>{{ "not applied" if s == "none" else s }}</option>
+        <option value="{{ s }}"{% if s == current %} data-saved selected{% endif %}>{{ "not applied" if s == "none" else s }}</option>
       {% endfor %}
       </select>
     </label>
+    <button type="submit" class="send">Send</button>
     <span class="status">{% if item.status and current != "none" %}since {{ item.status.on }}{% endif %}</span>
   </form>
   {% endif %}

@@ -73,26 +73,38 @@ document.querySelectorAll("form.rate").forEach((form) => {
   });
 });
 
-// Listing cards: the Application dropdown posts the new status straight away.
+// Listing cards: Send posts the Application status. It is greyed out until the choice differs
+// from the saved one. Without this script the form still submits and the page reloads.
 document.querySelectorAll("form.track").forEach((form) => {
   const select = form.querySelector("select[name=status]");
+  const send = form.querySelector("button.send");
   const status = form.querySelector(".status");
-  select.addEventListener("change", async () => {
+  const saved = () => form.querySelector("option[data-saved]")?.value ?? "none";
+  const sync = () => (send.disabled = select.value === saved());
+  select.addEventListener("change", sync);
+  sync();
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const body = new URLSearchParams({ listing_id: form.dataset.id, status: select.value });
+    send.disabled = true;
     status.textContent = "saving…";
     let r;
     try {
       r = await fetch("/status", { method: "POST", body });
-    } catch (e) {
+    } catch (err) {
       status.textContent = "failed (no connection)";
+      sync();
       return;
     }
     if (!r.ok) {
       status.textContent = `failed (${r.status})`;
+      sync();
       return;
     }
     const data = await r.json();
-    status.textContent = data.status === "none" ? "cleared" : `since ${data.on}`;
+    form.querySelectorAll("option").forEach((o) => o.toggleAttribute("data-saved", o.value === data.status));
+    sync();
+    if (data.status === "none") status.textContent = "cleared";
+    else status.innerHTML = `${data.status} since ${data.on} · <a href="/applied">Applied</a>`;
   });
-  form.addEventListener("submit", (e) => e.preventDefault());
 });
