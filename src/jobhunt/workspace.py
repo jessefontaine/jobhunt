@@ -8,10 +8,11 @@ from datetime import date
 from pathlib import Path
 
 from jobhunt import crossval, pipeline
+from jobhunt.applications import record_status, write_letter
 from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
-from jobhunt.models import Listing, Rating, Score
+from jobhunt.models import Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import regenerate_preferences
 from jobhunt.scoring import Runner, ScoreRunResult, claude_runner, score_listings
 from jobhunt.settings import Settings, load_settings
@@ -194,6 +195,26 @@ class Workspace:
         for err in result.errors:
             progress(f"  ! scoring: {err}")
         return listing, self.store.get_score(listing.id)
+
+    def find(self, ref: str) -> Listing | None:
+        """A listing by id or by its link."""
+        store = self.store
+        return store.get_listing(ref) or store.find_by_url(ref)
+
+    def set_status(
+        self,
+        listing_id: str,
+        status: str,
+        on: date | None = None,
+        note: str = "",
+        letter: str | None = None,
+    ) -> StatusEvent:
+        """Record where an application stands (and its letter, if given); refresh shortlist.md."""
+        event = record_status(self.store, self.paths.statuses, listing_id, status, on, note)
+        if letter is not None:
+            write_letter(self.paths, listing_id, letter)
+        self.shortlist()
+        return event
 
     def shortlist(self) -> str:
         """Rewrite shortlist.md; return its text."""

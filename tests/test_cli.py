@@ -352,6 +352,46 @@ def test_show_reports_an_unknown_link(scored_root):
     assert "not in the store" in result.output
 
 
+def test_apply_records_status_letter_and_show_prints_them(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    letter = root / "letter.md"
+    letter.write_text("Dear committee, I want to build vision models.")
+    result = run(
+        root, "apply", "https://x.org/1", "--date", "2026-09-28", "--note", "portal",
+        "--letter", str(letter),
+    )
+    assert result.exit_code == 0, result.output
+    assert "applied 2026-09-28" in result.output
+    assert (root / "data" / "status.jsonl").exists()
+    [saved] = (root / "applications").glob("*.md")
+    assert "vision models" in saved.read_text()
+
+    shown = run(root, "show", "https://x.org/1")
+    assert "applied 2026-09-28 — portal" in shown.output
+    assert f"letter: applications/{saved.name}" in shown.output
+    assert "## Applications" in (root / "shortlist.md").read_text()
+
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    assert "PhD vision" not in newest_digest(root / "digests").read_text()
+
+
+def test_status_moves_an_application_along(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    run(root, "apply", "https://x.org/1")
+    result = run(root, "status", "https://x.org/1", "interview", "--note", "Tuesday")
+    assert result.exit_code == 0, result.output
+    assert "interview" in run(root, "show", "https://x.org/1").output
+
+
+def test_status_refuses_an_unknown_state_or_listing(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    bad = run(root, "status", "https://x.org/1", "hired")
+    assert bad.exit_code != 0
+    missing = run(root, "apply", "https://x.org/nope")
+    assert missing.exit_code == 1
+    assert "not in the store" in missing.output
+
+
 def test_calibration_says_there_is_nothing_to_compare_yet(root):
     result = run(root, "calibration")
     assert result.exit_code == 0, result.output

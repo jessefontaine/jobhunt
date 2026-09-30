@@ -7,7 +7,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from jobhunt.digest import RunInfo, digest_path, render_digest, render_shortlist
+from jobhunt.digest import (
+    RunInfo,
+    digest_path,
+    render_applications,
+    render_digest,
+    render_shortlist,
+)
 from jobhunt.models import Listing
 from jobhunt.settings import Settings
 from jobhunt.sources import get_source
@@ -111,8 +117,12 @@ def build_digest(
 
 
 def write_shortlist(store: Store, path: Path, today: date, min_rating: int = 4) -> str:
-    """Overwrite `path` with the current shortlist (rated >= `min_rating`, unexpired)."""
+    """Overwrite `path` with the current shortlist (rated >= `min_rating`, unexpired), then
+    every application whatever its deadline."""
     body = render_shortlist(store.shortlist(today, min_rating)) or "(none yet)"
     text = f"# Shortlist — {today.isoformat()}\n\n{body}\n"
+    applied = render_applications(store.applications())
+    if applied:
+        text += f"\n## Applications\n\n{applied}\n"
     path.write_text(text)
     return text

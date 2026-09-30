@@ -145,11 +145,13 @@ editing, to your network.
 | `jobhunt fetch [--source X]` | only fetch new listings into `data/jobs.sqlite` |
 | `jobhunt score [--dry-run] [--rescore] [--include-rated]` | score unscored listings (`--rescore`: every unexpired, unrated listing, replacing old scores; `--include-rated` re-scores rated ones too; `--dry-run` prints the first prompt) |
 | `jobhunt add URL [--title …] [--employer …] [--description …] [--no-score]` | store a listing from a link and score it; the options add one by hand when the site blocks the fetch |
-| `jobhunt show URL-or-id` | print a listing with its score, why, concerns and your rating |
+| `jobhunt show URL-or-id` | print a listing with its score, why, concerns, your rating and application status |
+| `jobhunt apply URL-or-id [--date D] [--note …] [--letter FILE]` | record that you applied (and keep your motivation letter in `applications/`); the listing leaves the queue and joins `## Applications` in `shortlist.md` |
+| `jobhunt status URL-or-id STATE [--date D] [--note …]` | move an application along: `interview`, `offer`, `rejected`, `withdrawn` (`none` clears it) |
 | `jobhunt digest` | re-render a digest from the store |
 | `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
 | `jobhunt calibration` | check the scores against your ratings: rank correlation and the mean rating per score band |
-| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
+| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest (`--rebuild` replays `data/ratings.jsonl` and `data/status.jsonl` first) |
 | `jobhunt sources` | list sources and whether they are enabled |
 | `jobhunt learn` | regenerate the learned preferences from every rating (one Claude call) |
 | `jobhunt learn --cross-validate` | measure the rewrite on held-out ratings first, and write it only if it scores better (`--dry-run` prices it, `--force` writes anyway) |
@@ -184,9 +186,11 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `config/sources.yaml` | where to look: `contact` and per-source settings (queries, `pages:` entries) |
 | `config/settings.yaml` | how results are shown and how the pipeline behaves (theme, score range, digest size, scoring model, rated-list hiding, preference caps, update checks) |
 | `data/ratings.jsonl` | append-only rating log — the durable record |
+| `data/status.jsonl` | append-only application log (applied, interview, offer, …) — kept apart from ratings, never read by `learn` |
+| `applications/<id>.md` | the motivation letter you sent for that listing |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |
-| `shortlist.md` | open listings you rated 4–5, refreshed by `check`, `digest`, `rate` and `shortlist` |
+| `shortlist.md` | open listings you rated 4–5, then `## Applications` (every application, past its deadline too), refreshed by `check`, `digest`, `rate`, `apply` and `shortlist` |
 | `pyproject.toml` | depends on this engine; `uv run jobhunt …` works from here; `uv sync --upgrade-package jobhunt` pulls a newer engine |
 
 ## Adding a source

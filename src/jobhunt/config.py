@@ -23,6 +23,15 @@ class Paths:
         return self.root / "data" / "ratings.jsonl"
 
     @property
+    def statuses(self) -> Path:
+        return self.root / "data" / "status.jsonl"
+
+    @property
+    def applications(self) -> Path:
+        """One motivation letter per application: `applications/<listing id>.md`."""
+        return self.root / "applications"
+
+    @property
     def digests(self) -> Path:
         return self.root / "digests"
 

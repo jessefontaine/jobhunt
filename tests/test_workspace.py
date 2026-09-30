@@ -116,3 +116,13 @@ def test_add_says_when_the_link_is_already_in_the_store(ws):
     assert any("already" in line for line in lines)
     assert score is not None  # the score it already had
     assert ws.store.count_listings() == 1
+
+
+def test_set_status_records_it_writes_the_letter_and_refreshes_the_shortlist(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    lst = ws.find("https://x.org/1")
+    event = ws.set_status(lst.id, "applied", note="n", letter="Dear committee")
+    assert event.status == "applied"
+    assert ws.store.get_status(lst.id).note == "n"
+    assert (ws.paths.applications / f"{lst.id}.md").read_text() == "Dear committee\n"
+    assert "## Applications" in ws.paths.shortlist.read_text()
