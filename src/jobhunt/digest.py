@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from jobhunt.models import Listing, Rating, Score
+from jobhunt.models import Listing, Rating, Score, StatusEvent
 
 ROLE_LABELS = {
     "phd": "PhD",
@@ -81,6 +81,20 @@ def render_shortlist(items: list[tuple[Listing, Rating]]) -> str:
         parts.append(f"[{lst.source}]({lst.url})")
         if rating.note:
             parts.append(f"note: {rating.note}")
+        lines.append(" · ".join(parts))
+    return "\n".join(lines)
+
+
+def render_applications(items: list[tuple[Listing, StatusEvent]]) -> str:
+    """One line per application, e.g. `· applied 2026-09-30`, kept past the deadline."""
+    lines = []
+    for lst, event in items:
+        parts = [f"- **{lst.title}** — {lst.employer}", f"{event.status} {event.on.isoformat()}"]
+        if lst.deadline:
+            parts.append(f"deadline {lst.deadline.isoformat()}")
+        parts.append(f"[{lst.source}]({lst.url})")
+        if event.note:
+            parts.append(f"note: {event.note}")
         lines.append(" · ".join(parts))
     return "\n".join(lines)
 

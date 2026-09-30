@@ -59,6 +59,14 @@ may not contradict. The next `score` run reads all three plus your rated listing
 That only affects listings scored from then on — after editing your profile or preferences, run
 `uv run jobhunt check --rescore` (or `score --rescore`) to re-score everything still open.
 
+Once you apply, record it: `uv run jobhunt apply <url-or-id> --letter letter.md` (or the
+*Application* dropdown on any card in the UI). The listing leaves the queue and scoring, and
+`shortlist.md` lists it under `## Applications` — past its deadline too — until you move it on
+with `jobhunt status <url-or-id> interview|offer|rejected|withdrawn`. A status is not a rating:
+`learn` never reads it. Your motivation letters are different — they say in your own words what
+you want — so with **Learn from my motivation letters** on (Settings → Preferences, or
+`preferences.use_letters: true`), `learn` reads the latest five alongside your ratings.
+
 To see whether the scores are worth trusting, `uv run jobhunt calibration` ranks Claude's
 scores against your ratings (Spearman) and prints the mean rating per score band — which is
 also how you find the right shortlist threshold. It needs ~10 ratings to mean anything. The
@@ -117,9 +125,13 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
 - **Settings** — `config/settings.yaml` with real controls: light/dark/auto theme, the score
   range the Queue and digests show, queue order, the "closes soon" window, digest size, scoring
   model and batch size, the shortlist threshold, when a low rating drops off the Rated page,
-  the caps that keep learned preferences condensed, and the update check interval.
+  the caps that keep learned preferences condensed, whether `learn` reads your motivation
+  letters, and the update check interval.
 - **Queue** — open, unrated listings best-first; click 1–5 (and type a note) to rate. Ratings go
   straight into `data/ratings.jsonl` and the store, so digests are just a record here.
+- **Applied** — every listing you applied to, filterable by status, each with a date, a note
+  and the motivation letter you sent (saved to `applications/<id>.md`). Any card's
+  *Application* dropdown puts a listing here.
 - **Shortlist** and **Rated** — what you rated 4–5 that is still open; everything you rated,
   where you change an old rating. Ratings below the threshold drop off the Rated page once they
   are older than the window (`/rated?all=1` shows them; nothing is ever deleted).
@@ -145,11 +157,13 @@ editing, to your network.
 | `jobhunt fetch [--source X]` | only fetch new listings into `data/jobs.sqlite` |
 | `jobhunt score [--dry-run] [--rescore] [--include-rated]` | score unscored listings (`--rescore`: every unexpired, unrated listing, replacing old scores; `--include-rated` re-scores rated ones too; `--dry-run` prints the first prompt) |
 | `jobhunt add URL [--title …] [--employer …] [--description …] [--no-score]` | store a listing from a link and score it; the options add one by hand when the site blocks the fetch |
-| `jobhunt show URL-or-id` | print a listing with its score, why, concerns and your rating |
+| `jobhunt show URL-or-id` | print a listing with its score, why, concerns, your rating and application status |
+| `jobhunt apply URL-or-id [--date D] [--note …] [--letter FILE]` | record that you applied (and keep your motivation letter in `applications/`); the listing leaves the queue and joins `## Applications` in `shortlist.md` |
+| `jobhunt status URL-or-id STATE [--date D] [--note …]` | move an application along: `interview`, `offer`, `rejected`, `withdrawn` (`none` clears it) |
 | `jobhunt digest` | re-render a digest from the store |
 | `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
 | `jobhunt calibration` | check the scores against your ratings: rank correlation and the mean rating per score band |
-| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest |
+| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest (`--rebuild` replays `data/ratings.jsonl` and `data/status.jsonl` first) |
 | `jobhunt sources` | list sources and whether they are enabled |
 | `jobhunt learn` | regenerate the learned preferences from every rating (one Claude call) |
 | `jobhunt learn --cross-validate` | measure the rewrite on held-out ratings first, and write it only if it scores better (`--dry-run` prices it, `--force` writes anyway) |
@@ -184,9 +198,11 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `config/sources.yaml` | where to look: `contact` and per-source settings (queries, `pages:` entries) |
 | `config/settings.yaml` | how results are shown and how the pipeline behaves (theme, score range, digest size, scoring model, rated-list hiding, preference caps, update checks) |
 | `data/ratings.jsonl` | append-only rating log — the durable record |
+| `data/status.jsonl` | append-only application log (applied, interview, offer, …) — kept apart from ratings, never read by `learn` |
+| `applications/<id>.md` | the motivation letter you sent for that listing (gitignored: back it up yourself) |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |
-| `shortlist.md` | open listings you rated 4–5, refreshed by `check`, `digest`, `rate` and `shortlist` |
+| `shortlist.md` | open listings you rated 4–5, then `## Applications` (every application, past its deadline too), refreshed by `check`, `digest`, `rate`, `apply` and `shortlist` |
 | `pyproject.toml` | depends on this engine; `uv run jobhunt …` works from here; `uv sync --upgrade-package jobhunt` pulls a newer engine |
 
 ## Adding a source

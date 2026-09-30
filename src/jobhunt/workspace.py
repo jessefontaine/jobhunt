@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from jobhunt import crossval, pipeline
+from jobhunt.applications import letters, record_status, write_letter
 from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
-from jobhunt.models import Listing, Rating, Score
+from jobhunt.models import Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import regenerate_preferences
 from jobhunt.scoring import Runner, ScoreRunResult, claude_runner, score_listings
 from jobhunt.settings import Settings, load_settings
@@ -195,6 +196,26 @@ class Workspace:
             progress(f"  ! scoring: {err}")
         return listing, self.store.get_score(listing.id)
 
+    def find(self, ref: str) -> Listing | None:
+        """A listing by id or by its link."""
+        store = self.store
+        return store.get_listing(ref) or store.find_by_url(ref)
+
+    def set_status(
+        self,
+        listing_id: str,
+        status: str,
+        on: date | None = None,
+        note: str = "",
+        letter: str | None = None,
+    ) -> StatusEvent:
+        """Record where an application stands (and its letter, if given); refresh shortlist.md."""
+        event = record_status(self.store, self.paths.statuses, listing_id, status, on, note)
+        if letter is not None:
+            write_letter(self.paths, listing_id, letter)
+        self.shortlist()
+        return event
+
     def shortlist(self) -> str:
         """Rewrite shortlist.md; return its text."""
         return pipeline.write_shortlist(
@@ -241,12 +262,20 @@ class Workspace:
             force=force,
         )
 
+    def letters(self, exclude: Collection[str] = ()) -> list[tuple[Listing, str]]:
+        """The motivation letters `learn` may read: none unless the settings allow it."""
+        if not self.settings.preferences.use_letters:
+            return []
+        return letters(self.paths, self.store, exclude)
+
     def learn(self, progress: Progress = _silent) -> bool:
         """Regenerate `## Learned` in preferences.md from every rating (one Claude call)."""
         model = self.settings.scoring.model
-        progress(f"regenerating preferences with {model} (one Claude call)…")
+        read = self.letters()
+        with_letters = f" and {len(read)} motivation letter(s)" if read else ""
+        progress(f"regenerating preferences{with_letters} with {model} (one Claude call)…")
         ok = regenerate_preferences(
-            self.paths, self.store, self.runner, model, self.settings.preferences
+            self.paths, self.store, self.runner, model, self.settings.preferences, read
         )
         progress("preferences: updated" if ok else "preferences: failed (file left untouched)")
         return ok

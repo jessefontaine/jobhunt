@@ -72,6 +72,8 @@ class PreferenceSettings(BaseModel):
     max_rules: int = Field(10, ge=1, le=50)
     max_specifics: int = Field(8, ge=0, le=50)
     max_words_per_rule: int = Field(20, ge=5, le=100)
+    # Off by default: a workspace that never opted in learns from its ratings alone.
+    use_letters: bool = False  # `learn` also reads the motivation letters in applications/
 
 
 class CalibrationSettings(BaseModel):

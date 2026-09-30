@@ -4,6 +4,19 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.11.0 — 2026-09-30
+- Track your applications: jobhunt apply and jobhunt status record applied, interview, offer,
+  rejected or withdrawn per listing in data/status.jsonl, separate from your rating. Applied
+  listings leave the queue and scoring, and shortlist.md lists them under Applications, past
+  their deadline too.
+- A new Applied page lists every application with a status filter, and keeps the date, a note
+  and the motivation letter you sent for each. Every listing card has an Application dropdown.
+- New workspaces gitignore applications/, so motivation letters stay out of a pushed repo. An
+  existing workspace can add the line applications/ to its own .gitignore.
+- Settings, Preferences: learn from my motivation letters. When on, Regenerate preferences (and
+  a cross-validation) also reads your latest five letters. A cross-validation fold never sees
+  the letter of a listing it holds out.
+
 ## 0.10.0 — 2026-09-23
 - The Calibration page can run a cross-validation: what it will cost in Claude calls, tokens and
   minutes is shown before the button, and the last verdict stays on the page afterwards.

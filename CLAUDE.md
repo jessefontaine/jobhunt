@@ -43,7 +43,8 @@ against a user's profile with `claude -p`, write digests, learn from ratings. Re
 
 Data flow: sources (and `jobhunt add` for a pasted link) → `data/jobs.sqlite` → score
 (`claude -p`, batches of 10) → digest → rate (`data/ratings.jsonl` + store) → learn
-(`## Learned` / `## Specifics` in `profile/preferences.md`). Rated listings are excluded from
+(`## Learned` / `## Specifics` in `profile/preferences.md`, from ratings and — opt-in — the
+motivation letters). `jobhunt apply`/`status` track applications apart from ratings. Rated listings are excluded from
 scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
 
 | module | does |
@@ -54,6 +55,7 @@ scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
 | `sources/base.py`, `sources/http.py` | the `Source` protocol (`name`, `fetch(cfg, http) -> SourceResult`); the polite client (1 req/s, retries, `contact:` in the User-Agent) |
 | `sources/<site>.py` | one scraper each; `fixture.py` loads listings from JSON for tests and `check --fixture`; `manual.py` is not in the registry — it turns one pasted URL into a Listing for `jobhunt add` |
 | `scoring.py` | `build_prompt(profile, preferences, cv, examples, batch)` and `claude_runner` (`claude -p --output-format json --json-schema …`); the `Runner` is injected so tests never call Claude |
+| `applications.py` | application status (`data/status.jsonl` → `statuses` table; `none` clears it) and motivation letters (`applications/<id>.md`). Tracked listings leave digests and scoring; `letters()` is what `learn` reads when `preferences.use_letters` is on, and takes `exclude` so a cross-validation fold never sees a held-out listing's letter |
 | `ratings.py` | parse `rating:`/`note:` lines out of a digest, append to `ratings.jsonl`, `regenerate_preferences` (rewrites `## Learned`, keeps `## Manual`) |
 | `crossval.py` | k-fold cross-validation of a preferences rewrite: `plan` prices a run with no Claude call, `cross_validate` measures both arms on held-out ratings and writes only through `gate`. Fold rules are never kept — an accepted run retrains on every rating |
 | `digest.py` | render the ranked markdown the user rates in (`## Shortlist`, numbered queue, `## Unscored`) |

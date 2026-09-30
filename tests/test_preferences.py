@@ -376,3 +376,20 @@ def test_learn_rules_returns_none_when_the_output_is_unusable(env):
         )
         is None
     )
+
+
+def test_letters_reach_the_prompt_only_when_given(env):
+    from jobhunt.ratings import preferences_prompt
+
+    paths, store = env
+    prefs = split_preferences(PREFS)
+    rated = store.all_ratings()
+    caps = PreferenceSettings()
+    plain = preferences_prompt(prefs, rated, {}, caps)
+    assert "Motivation letters" not in plain
+    lst = rated[0][0]
+    with_letters = preferences_prompt(prefs, rated, {}, caps, letters=[(lst, "I want NeuroAI")])
+    assert with_letters.startswith(plain)  # the ratings part is unchanged
+    assert "# Motivation letters" in with_letters
+    assert f"## {lst.title} — {lst.employer}" in with_letters
+    assert "I want NeuroAI" in with_letters

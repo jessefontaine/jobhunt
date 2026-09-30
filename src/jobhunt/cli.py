@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import typer
 
+from jobhunt.applications import letter_path, rebuild_statuses
 from jobhunt.calibration import render
 from jobhunt.config import Paths, find_root
 from jobhunt.crossval import (
@@ -18,6 +20,7 @@ from jobhunt.crossval import (
 )
 from jobhunt.crossval import render as render_crossval
 from jobhunt.digest import newest_digest
+from jobhunt.models import STATUSES
 from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl
 from jobhunt.scaffold import DEFAULT_ENGINE_URL, init_workspace
 from jobhunt.scoring import claude_runner
@@ -170,6 +173,8 @@ def rate(
     if rebuild:
         n = rebuild_from_jsonl(store, ws.paths.ratings)
         typer.echo(f"rebuilt {n} rating record(s) from {ws.paths.ratings}")
+        n = rebuild_statuses(store, ws.paths.statuses)
+        typer.echo(f"rebuilt {n} status record(s) from {ws.paths.statuses}")
     if digest_file is None:
         digest_file = newest_digest(ws.paths.digests)
         if digest_file is None:
@@ -220,7 +225,7 @@ def add(
         typer.echo(f"score {score.score} ({score.role_type}) — {score.why}")
 
 
-def _show_listing(listing, score, rating) -> str:
+def _show_listing(listing, score, rating, status=None, letter=None) -> str:
     lines = [f"{listing.title} — {listing.employer}", listing.url]
     meta = [f"source {listing.source}", f"id {listing.id}"]
     if listing.location:
@@ -237,6 +242,11 @@ def _show_listing(listing, score, rating) -> str:
     if rating is not None:
         note = f" — {rating.note}" if rating.note else ""
         lines.append(f"rated {rating.rating}/5{note}")
+    if status is not None and status.status != "none":
+        note = f" — {status.note}" if status.note else ""
+        lines.append(f"{status.status} {status.on.isoformat()}{note}")
+    if letter is not None:
+        lines.append(f"letter: {letter}")
     body = listing.description or listing.summary
     if body:
         lines += ["", body[:1000]]
@@ -255,7 +265,66 @@ def show(
     if found is None:
         typer.echo(f"{listing} is not in the store (add it with: jobhunt add URL)", err=True)
         raise typer.Exit(1)
-    typer.echo(_show_listing(found, store.get_score(found.id), store.get_rating(found.id)))
+    letter = letter_path(ws.paths, found.id)
+    typer.echo(
+        _show_listing(
+            found,
+            store.get_score(found.id),
+            store.get_rating(found.id),
+            store.get_status(found.id),
+            letter.relative_to(ws.paths.root) if letter.exists() else None,
+        )
+    )
+
+
+def _found(ws: Workspace, ref: str):
+    found = ws.find(ref)
+    if found is None:
+        typer.echo(f"{ref} is not in the store (add it with: jobhunt add URL)", err=True)
+        raise typer.Exit(1)
+    return found
+
+
+def _on(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        raise typer.BadParameter("use YYYY-MM-DD", param_hint="--date") from None
+
+
+@app.command()
+def apply(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+    on: str | None = typer.Option(None, "--date", help="When you applied (default: today)"),
+    note: str = typer.Option("", help="A note on this application"),
+    letter: Path | None = typer.Option(
+        None, help="Motivation letter to keep with it (copied to applications/<id>.md)"
+    ),
+) -> None:
+    """Record that you applied: the listing leaves the queue and joins ## Applications."""
+    ws = _workspace(ctx)
+    found = _found(ws, listing)
+    text = letter.read_text() if letter else None
+    event = ws.set_status(found.id, "applied", _on(on), note, letter=text)
+    typer.echo(f"{found.title}: applied {event.on.isoformat()}")
+
+
+@app.command()
+def status(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+    state: str = typer.Argument(..., help=" / ".join(STATUSES)),
+    on: str | None = typer.Option(None, "--date", help="When it happened (default: today)"),
+    note: str = typer.Option("", help="A note on this step"),
+) -> None:
+    """Move an application along (interview, offer, rejected, withdrawn; none clears it)."""
+    if state not in STATUSES:
+        raise typer.BadParameter(f"one of: {', '.join(STATUSES)}", param_hint="STATE")
+    ws = _workspace(ctx)
+    found = _found(ws, listing)
+    event = ws.set_status(found.id, state, _on(on), note)
+    typer.echo(f"{found.title}: {event.status} {event.on.isoformat()}")
 
 
 @app.command()

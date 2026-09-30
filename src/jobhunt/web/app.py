@@ -14,12 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from jobhunt import pipeline
+from jobhunt.applications import read_letter, write_letter
 from jobhunt.calibration import ENOUGH_RATINGS, verdict
 from jobhunt.config import ConfigError, parse_config
 from jobhunt.crossval import NotEnoughRatings, TooExpensive, last_run
 from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
-from jobhunt.models import Listing, Rating, Score
+from jobhunt.models import STATUSES, Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import learned_at, record_rating
 from jobhunt.settings import DisplaySettings, save_settings, settings_from_form
 from jobhunt.sources import list_sources
@@ -43,6 +44,7 @@ def _item(
     rating: Rating | None,
     today: date,
     display: DisplaySettings | None = None,
+    status: StatusEvent | None = None,
 ) -> dict:
     """One listing card's worth of template context."""
     display = display or DisplaySettings()
@@ -50,6 +52,7 @@ def _item(
         "listing": lst,
         "score": score,
         "rating": rating,
+        "status": status,
         "expired": lst.is_expired(today),
         "soon": display.closing_soon(lst.deadline, today),
         "days": (lst.deadline - today).days if lst.deadline else None,
@@ -89,6 +92,7 @@ def create_app(
             "shortlist": len(store.shortlist(today, ws.settings.shortlist.min_rating)),
             "listings": store.count_listings(),
             "ratings": len(store.rated_ids()),
+            "applications": len(store.applications()),
             "since_learned": store.ratings_since(learned),
             "learned_at": learned,
             "newest_digest": digest.name if digest else None,
@@ -261,6 +265,7 @@ def create_app(
             total=total,
             hidden=hidden,
             labels=RATING_LABELS,
+            statuses=STATUSES,
         )
 
     def _sorted(listings: list[Listing], scores: dict[str, Score]) -> list[Listing]:
@@ -347,9 +352,10 @@ def create_app(
             for lst, rating in rows
             if all or not rules.hidden(rating.rating, rating.rated_at, now)
         ]
-        scores = store.get_scores([lst.id for lst, _ in kept])
+        ids = [lst.id for lst, _ in kept]
+        scores, statuses = store.get_scores(ids), store.get_statuses(ids)
         items = [
-            _item(lst, scores.get(lst.id), rating, today, ws.settings.display)
+            _item(lst, scores.get(lst.id), rating, today, ws.settings.display, statuses.get(lst.id))
             for lst, rating in kept
         ]
         return listing_page(
@@ -377,6 +383,72 @@ def create_app(
             "changed": saved is not None,
             "since_learned": store.ratings_since(learned_at(store)),
         }
+
+    # -- applications --------------------------------------------------------
+
+    @app.post("/status")
+    def post_status(
+        listing_id: str = Form(...),
+        status: str = Form(..., pattern="^(" + "|".join(STATUSES) + ")$"),
+    ):
+        store = ws.store
+        if store.get_listing(listing_id) is None:
+            return JSONResponse({"error": "no such listing"}, status_code=404)
+        current = store.get_status(listing_id)
+        if (current.status if current else "none") == status:
+            event, changed = current, False
+        else:
+            event, changed = ws.set_status(listing_id, status), True
+        return {
+            "listing_id": listing_id,
+            "status": status,
+            "on": event.on.isoformat() if event else None,
+            "changed": changed,
+        }
+
+    @app.get("/applied", response_class=HTMLResponse)
+    def applied(request: Request, status: str = "", saved: bool = False):
+        store, today = ws.store, date.today()
+        rows = store.applications()
+        counts = {s: sum(1 for _, ev in rows if ev.status == s) for s in STATUSES[1:]}
+        kept = [(lst, ev) for lst, ev in rows if not status or ev.status == status]
+        ids = [lst.id for lst, _ in kept]
+        scores = store.get_scores(ids)
+        ratings = {lst.id: store.get_rating(lst.id) for lst, _ in kept}
+        items = [
+            _item(lst, scores.get(lst.id), ratings[lst.id], today, ws.settings.display, ev)
+            | {"letter": read_letter(ws.paths, lst.id)}
+            for lst, ev in kept
+        ]
+        return render(
+            request,
+            "applied.html",
+            items=items,
+            counts=counts,
+            total=len(rows),
+            only=status,
+            labels=RATING_LABELS,
+            statuses=STATUSES,
+            notice="Saved." if saved else None,
+        )
+
+    @app.post("/applied/{listing_id}")
+    def save_application(
+        listing_id: str, on: str = Form(""), note: str = Form(""), letter: str = Form("")
+    ):
+        current = ws.store.get_status(listing_id)
+        if current is None or current.status == "none":
+            raise HTTPException(404, "no application for that listing")
+        try:
+            when = date.fromisoformat(on) if on else current.on
+        except ValueError:
+            raise HTTPException(400, "date must be YYYY-MM-DD") from None
+        note = note.strip()
+        if (when, note) != (current.on, current.note):
+            ws.set_status(listing_id, current.status, when, note, letter=letter)
+        else:
+            write_letter(ws.paths, listing_id, letter)
+        return RedirectResponse(f"/applied?saved=1#{listing_id}", status_code=303)
 
     # -- settings ------------------------------------------------------------
 

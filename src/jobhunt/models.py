@@ -1,14 +1,17 @@
-"""Core data types: Listing, Score, Rating."""
+"""Core data types: Listing, Score, Rating, StatusEvent."""
 
 from __future__ import annotations
 
 import hashlib
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
 RoleType = Literal["phd", "postdoc", "ra", "industry", "other"]
+# Where an application stands. `none` clears a status set by mistake.
+Status = Literal["none", "applied", "interview", "offer", "rejected", "withdrawn"]
+STATUSES: tuple[str, ...] = get_args(Status)
 
 
 def canonical_url(url: str) -> str:
@@ -63,3 +66,13 @@ class Rating(BaseModel):
     note: str = ""
     digest: str = ""
     rated_at: datetime = Field(default_factory=datetime.now)
+
+
+class StatusEvent(BaseModel):
+    """One step of an application, kept apart from the rating: `learn` never reads it."""
+
+    listing_id: str
+    status: Status
+    on: date = Field(default_factory=date.today)  # when it happened, as the user says
+    note: str = ""
+    at: datetime = Field(default_factory=datetime.now)  # when it was recorded

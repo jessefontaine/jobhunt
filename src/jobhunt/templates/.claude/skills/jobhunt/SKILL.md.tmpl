@@ -18,6 +18,8 @@ ratings loop stays intact.
 | Show what the user rated 4–5 that is still open | `uv run jobhunt shortlist` (also rewrites `shortlist.md`) |
 | Everything known about one listing | `uv run jobhunt show <url-or-id>` |
 | Add a role from a link | `uv run jobhunt add <url>` (fetches, stores, scores it) |
+| The user applied to a role | `uv run jobhunt apply <url-or-id> [--date YYYY-MM-DD] [--letter FILE]` — a status, not a rating; ask for a rating separately if there is none |
+| An application moved on | `uv run jobhunt status <url-or-id> interview` (or `offer`, `rejected`, `withdrawn`; `none` clears it) |
 | Change an earlier rating | edit the `rating:` line in the digest it was rated in, then `uv run jobhunt rate digests/<that-file>.md` |
 | Re-score everything after the user edited `profile/profile.md` or `profile/preferences.md` | `uv run jobhunt check --rescore` (replaces old scores; one Claude call per batch of 10, so mention it takes a while) |
 | Ingest ratings from the newest digest | `uv run jobhunt rate` (add `--force` to regenerate preferences with < 3 new ratings) |

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_card.html" import card %}
+{% block title %}Applied · jobhunt{% endblock %}
+{% block content %}
+<h1>Applied <small class="muted">{{ total }}</small></h1>
+<p class="muted">Every listing you applied to, latest step first — past its deadline too. Also
+   written to <code>shortlist.md</code> under <code>## Applications</code>. Keep the motivation
+   letter you sent with each one: it is saved to <code>applications/&lt;id&gt;.md</code>, and
+   <em>Regenerate preferences</em> reads your letters when <a href="/settings">Settings</a> →
+   Preferences allows it.</p>
+{% if total %}
+<p class="filters">
+  <a href="/applied"{% if not only %} class="active"{% endif %}>all ({{ total }})</a>
+  {% for s, n in counts.items() if n %}
+  · <a href="/applied?status={{ s }}"{% if only == s %} class="active"{% endif %}>{{ s }} ({{ n }})</a>
+  {% endfor %}
+</p>
+{% endif %}
+{% for item in items %}
+<section class="application" id="{{ item.listing.id }}">
+  {{ card(item, labels, statuses) }}
+  <form method="post" action="/applied/{{ item.listing.id }}" class="letter">
+    <label>Date <input type="date" name="on" value="{{ item.status.on }}"></label>
+    <label>Note <input type="text" name="note" value="{{ item.status.note }}" placeholder="optional"></label>
+    <label class="block">Motivation letter
+      <textarea name="letter" rows="8" placeholder="Paste the letter you sent">{{ item.letter }}</textarea>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</section>
+{% endfor %}
+{% if not items %}<p class="muted">{% if only %}Nothing {{ only }}.{% else %}No applications yet — set a listing's
+   <em>Application</em> dropdown to <em>applied</em> on the Shortlist or Rated page, or run
+   <code>jobhunt apply URL</code>.{% endif %}</p>{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-"""SQLite persistence for listings, scores and ratings."""
+"""SQLite persistence for listings, scores, ratings and application statuses."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
-from jobhunt.models import Listing, Rating, Score, canonical_url
+from jobhunt.models import Listing, Rating, Score, StatusEvent, canonical_url
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -41,11 +41,22 @@ CREATE TABLE IF NOT EXISTS ratings (
     digest TEXT NOT NULL,
     rated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS statuses (
+    listing_id TEXT PRIMARY KEY REFERENCES listings(id),
+    status TEXT NOT NULL,
+    status_on TEXT NOT NULL,
+    note TEXT NOT NULL,
+    at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 """
+
+
+# Listings with an application in progress (or over): out of the queue and out of scoring.
+NOT_TRACKED = "l.id NOT IN (SELECT listing_id FROM statuses WHERE status != 'none')"
 
 
 def _iso(d: date | datetime | None) -> str | None:
@@ -139,15 +150,16 @@ class Store:
         return [by_id[i] for i in ids if i in by_id]
 
     def unscored_listings(self, today: date) -> list[Listing]:
-        """Unexpired listings with no score and no rating — what `score` has left to do."""
+        """Unexpired, untracked listings with no score and no rating — what `score` has left."""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT l.* FROM listings l
             LEFT JOIN scores s ON s.listing_id = l.id
             LEFT JOIN ratings r ON r.listing_id = l.id
             WHERE s.listing_id IS NULL
               AND r.listing_id IS NULL
               AND (l.deadline IS NULL OR l.deadline >= ?)
+              AND {NOT_TRACKED}
             ORDER BY l.fetched_at DESC
             """,
             (today.isoformat(),),
@@ -158,7 +170,8 @@ class Store:
         """Listings whose deadline has not passed (what `--rescore` re-scores).
 
         Rated listings are left out: the verdict is in, and re-scoring them costs a Claude
-        call for a listing that can no longer appear in a digest.
+        call for a listing that can no longer appear in a digest. Listings with an application
+        status are left out even with `include_rated`: the decision is already made.
         """
         rated_clause = "" if include_rated else "AND r.listing_id IS NULL"
         rows = self.conn.execute(
@@ -166,6 +179,7 @@ class Store:
             SELECT l.* FROM listings l
             LEFT JOIN ratings r ON r.listing_id = l.id
             WHERE (l.deadline IS NULL OR l.deadline >= ?)
+              AND {NOT_TRACKED}
               {rated_clause}
             ORDER BY l.fetched_at DESC
             """,
@@ -306,13 +320,14 @@ class Store:
         )
 
     def candidate_listings(self, today: date) -> list[Listing]:
-        """Unexpired listings the user has not rated yet — what a digest shows."""
+        """Unexpired listings the user has neither rated nor applied to — what a digest shows."""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT l.* FROM listings l
             LEFT JOIN ratings r ON r.listing_id = l.id
             WHERE r.listing_id IS NULL
               AND (l.deadline IS NULL OR l.deadline >= ?)
+              AND {NOT_TRACKED}
             ORDER BY l.fetched_at DESC
             """,
             (today.isoformat(),),
@@ -321,14 +336,15 @@ class Store:
 
     def shortlist(self, today: date, min_rating: int = 4) -> list[tuple[Listing, Rating]]:
         """Unexpired listings rated `min_rating` or higher: best rating first, then nearest
-        deadline (no deadline last)."""
+        deadline (no deadline last). Applications are listed by `applications` instead."""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT l.*, r.rating AS r_rating, r.note AS r_note, r.digest AS r_digest,
                    r.rated_at AS r_rated_at
             FROM ratings r JOIN listings l ON l.id = r.listing_id
             WHERE r.rating >= ?
               AND (l.deadline IS NULL OR l.deadline >= ?)
+              AND {NOT_TRACKED}
             ORDER BY r.rating DESC, l.deadline IS NULL, l.deadline, l.title
             """,
             (min_rating, today.isoformat()),
@@ -355,6 +371,68 @@ class Store:
             note=row["r_note"],
             digest=row["r_digest"],
             rated_at=datetime.fromisoformat(row["r_rated_at"]),
+        )
+
+    # -- application statuses -----------------------------------------------
+
+    def save_status(self, event: StatusEvent) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO statuses (listing_id, status, status_on, note, at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (event.listing_id, event.status, _iso(event.on), event.note, _iso(event.at)),
+            )
+
+    def get_status(self, listing_id: str) -> StatusEvent | None:
+        row = self.conn.execute(
+            "SELECT * FROM statuses WHERE listing_id = ?", (listing_id,)
+        ).fetchone()
+        return self._row_to_status(row) if row else None
+
+    def get_statuses(self, ids: list[str]) -> dict[str, StatusEvent]:
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        rows = self.conn.execute(
+            f"SELECT * FROM statuses WHERE listing_id IN ({marks})", ids
+        ).fetchall()
+        return {r["listing_id"]: self._row_to_status(r) for r in rows}
+
+    def applications(self) -> list[tuple[Listing, StatusEvent]]:
+        """Every listing with a status, past deadline or not: latest step first."""
+        rows = self.conn.execute(
+            """
+            SELECT l.*, s.status AS s_status, s.status_on AS s_on, s.note AS s_note,
+                   s.at AS s_at
+            FROM statuses s JOIN listings l ON l.id = s.listing_id
+            WHERE s.status != 'none'
+            ORDER BY s.status_on DESC, s.at DESC, l.title
+            """
+        ).fetchall()
+        return [
+            (
+                self._row_to_listing(row),
+                StatusEvent(
+                    listing_id=row["id"],
+                    status=row["s_status"],
+                    on=date.fromisoformat(row["s_on"]),
+                    note=row["s_note"],
+                    at=datetime.fromisoformat(row["s_at"]),
+                ),
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _row_to_status(row: sqlite3.Row) -> StatusEvent:
+        return StatusEvent(
+            listing_id=row["listing_id"],
+            status=row["status"],
+            on=date.fromisoformat(row["status_on"]),
+            note=row["note"],
+            at=datetime.fromisoformat(row["at"]),
         )
 
     # -- meta ---------------------------------------------------------------

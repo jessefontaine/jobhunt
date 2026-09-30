@@ -16,10 +16,11 @@ from __future__ import annotations
 import json
 import math
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from jobhunt.applications import letters
 from jobhunt.calibration import (
     Agreement,
     agreement,
@@ -154,6 +155,15 @@ def _files(paths: Paths) -> tuple[str, str]:
     )
 
 
+def _letters(
+    paths: Paths, store: Store, settings: Settings, held_out: Sequence[Pair] = ()
+) -> list[tuple[Listing, str]]:
+    """The letters a fold may learn from: never one written for a listing it holds out."""
+    if not settings.preferences.use_letters:
+        return []
+    return letters(paths, store, exclude={lst.id for lst, _ in held_out})
+
+
 def _example_pool(
     training: list[Pair], scores: dict[str, Score], cfg: ScoringConfig
 ) -> list[Pair]:
@@ -191,7 +201,10 @@ def _estimate_tokens(
     prefs = _read_prefs(paths)
     profile, cv = _files(paths)
     training = [pair for n, fold in enumerate(folds) if n != 0 for pair in fold]
-    learn_chars = len(preferences_prompt(prefs, training, scores, settings.preferences))
+    fold_letters = _letters(paths, store, settings, folds[0])
+    learn_chars = len(
+        preferences_prompt(prefs, training, scores, settings.preferences, fold_letters)
+    )
     batch = next((e for e in evals if e), [])[: settings.scoring.batch_size]
     context = ScoringContext(
         profile=profile,
@@ -361,12 +374,13 @@ def _learn_with_retry(
     runner: Runner,
     settings: Settings,
     progress: Progress,
+    letters: list[tuple[Listing, str]] = (),
 ) -> RuleSet | None:
     for attempt in range(2):
         if attempt:
             progress("  preferences call failed, retrying…")
         ruleset = learn_rules(
-            prefs, rated, scores, runner, settings.scoring.model, settings.preferences
+            prefs, rated, scores, runner, settings.scoring.model, settings.preferences, letters
         )
         if ruleset is not None:
             return ruleset
@@ -433,7 +447,10 @@ def cross_validate(
             continue
         training = [pair for m, f in enumerate(folds, 1) if m != n for pair in f]
         progress(f"fold {n}/{cfg.folds}: learning from {len(training)} ratings…")
-        ruleset = _learn_with_retry(prefs, training, scores, runner, settings, progress)
+        fold_letters = _letters(paths, store, settings, folds[n - 1])
+        ruleset = _learn_with_retry(
+            prefs, training, scores, runner, settings, progress, fold_letters
+        )
         if ruleset is None:
             raise LearnFailed(
                 f"fold {n}: the preferences call failed twice. Nothing was written — a partial "
@@ -499,7 +516,9 @@ def cross_validate(
     written = False
     if (accepted or force) and not cancelled:
         progress("retraining on every rating…")
-        final = _learn_with_retry(prefs, rated, scores, runner, settings, progress)
+        final = _learn_with_retry(
+            prefs, rated, scores, runner, settings, progress, _letters(paths, store, settings)
+        )
         if final is None:
             raise LearnFailed("the final preferences call failed twice; nothing was written.")
         write_rules(paths, store, prefs, final)

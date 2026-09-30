@@ -1,4 +1,4 @@
-{% macro card(item, labels) %}
+{% macro card(item, labels, statuses=()) %}
 {% set lst = item.listing %}{% set score = item.score %}{% set rating = item.rating %}
 <article class="card{% if rating %} rated{% endif %}" data-id="{{ lst.id }}">
   <h3><a href="{{ lst.url }}" target="_blank" rel="noopener">{{ lst.title }}</a></h3>
@@ -27,5 +27,18 @@
     <input type="text" name="note" placeholder="note (optional)" value="{{ rating.note if rating else '' }}">
     <span class="status">{% if rating %}rated {{ rating.rating }}/5 on {{ rating.rated_at.strftime("%Y-%m-%d") }}{% endif %}</span>
   </form>
+  {% if statuses %}
+  {% set current = item.status.status if item.status else "none" %}
+  <form class="track" data-id="{{ lst.id }}">
+    <label>Application
+      <select name="status">
+      {% for s in statuses %}
+        <option value="{{ s }}"{% if s == current %} selected{% endif %}>{{ "not applied" if s == "none" else s }}</option>
+      {% endfor %}
+      </select>
+    </label>
+    <span class="status">{% if item.status and current != "none" %}since {{ item.status.on }}{% endif %}</span>
+  </form>
+  {% endif %}
 </article>
 {% endmacro %}
