@@ -738,3 +738,13 @@ def test_settings_page_toggles_letters_in_recalibration(client, ws):
     client.post("/settings", data=form)
     assert ws.settings.preferences.use_letters is True
     assert "use_letters: true" in ws.paths.settings_yaml.read_text()
+
+
+def test_static_files_are_revalidated_so_an_update_reaches_the_browser(client):
+    # Without this a browser keeps the old app.js for hours after an update, and new
+    # controls (the Application dropdown in 0.11.0) render but do nothing.
+    for path in ("/static/app.js", "/static/style.css"):
+        r = client.get(path)
+        assert r.headers["cache-control"] == "no-cache"
+        again = client.get(path, headers={"if-none-match": r.headers["etag"]})
+        assert again.status_code == 304
