@@ -653,3 +653,73 @@ def test_calibration_page_renders_a_verdict_from_an_older_engine(client, ws):
     assert page.status_code == 200
     assert "+0.08" in page.text
     assert "of resamples" not in page.text
+
+
+def test_status_post_tracks_an_application_and_moves_it_to_applied(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "PhD vision")
+    r = client.post("/status", data={"listing_id": lid, "status": "applied"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "applied" and r.json()["changed"] is True
+    assert ws.store.get_status(lid).status == "applied"
+    assert ws.paths.statuses.exists()
+    assert "PhD vision" not in client.get("/queue").text
+    applied = client.get("/applied").text
+    assert "PhD vision" in applied
+    assert '<option value="applied" selected>' in applied
+    assert "## Applications" in ws.paths.shortlist.read_text()
+    again = client.post("/status", data={"listing_id": lid, "status": "applied"})
+    assert again.json()["changed"] is False
+
+
+def test_status_post_validates(client, ws):
+    fetched(ws)
+    missing = client.post("/status", data={"listing_id": "nope", "status": "applied"})
+    assert missing.status_code == 404
+    lid = listing_id(ws, "PhD vision")
+    assert client.post("/status", data={"listing_id": lid, "status": "hired"}).status_code == 422
+
+
+def test_cards_carry_a_status_dropdown(client, ws):
+    fetched(ws)
+    page = client.get("/queue").text
+    assert 'class="track"' in page and '<option value="interview">' in page
+
+
+def test_applied_page_saves_the_letter_date_and_note(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "Old job")  # past its deadline: still listed
+    client.post("/status", data={"listing_id": lid, "status": "applied"})
+    r = client.post(
+        f"/applied/{lid}",
+        data={"on": "2026-08-20", "note": "portal", "letter": "Dear committee,\r\nI build."},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert (ws.paths.applications / f"{lid}.md").read_text() == "Dear committee,\nI build.\n"
+    event = ws.store.get_status(lid)
+    assert (event.status, event.on, event.note) == ("applied", date(2026, 8, 20), "portal")
+    page = client.get("/applied").text
+    assert "Old job" in page and "Dear committee," in page and 'value="2026-08-20"' in page
+
+
+def test_applied_page_filters_by_status(client, ws):
+    fetched(ws)
+    client.post("/status", data={"listing_id": listing_id(ws, "PhD vision"), "status": "applied"})
+    client.post("/status", data={"listing_id": listing_id(ws, "RA fMRI"), "status": "rejected"})
+    page = client.get("/applied?status=rejected").text
+    assert "RA fMRI" in page and "PhD vision" not in page
+
+
+def test_applied_page_is_in_the_nav_and_counted_on_the_dashboard(client, ws):
+    fetched(ws)
+    client.post("/status", data={"listing_id": listing_id(ws, "PhD vision"), "status": "applied"})
+    page = client.get("/").text
+    assert 'href="/applied"' in page
+    assert "<b>1</b> application" in page
+
+
+def test_letter_for_an_untracked_listing_is_404(client, ws):
+    fetched(ws)
+    lid = listing_id(ws, "PhD vision")
+    assert client.post(f"/applied/{lid}", data={"letter": "x"}).status_code == 404

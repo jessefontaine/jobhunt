@@ -124,3 +124,18 @@ form.inline { display: inline; }
 .settings > label input[type=number] { width: 5.5rem; }
 .settings > label input[type=text] { max-width: 16rem; }
 .settings .when { display: block; margin-top: 0.3rem; }
+
+.track { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem;
+         font-size: 0.92em; }
+.track .status { color: var(--muted); }
+.filters a { text-decoration: none; }
+.filters a.active { font-weight: 600; color: var(--fg); }
+.application { margin: 0 0 1.2rem; }
+.application .card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.letter { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; padding: 0.6rem 1rem;
+          background: var(--card); border: 1px solid var(--border); border-top: 0;
+          border-radius: 0 0 8px 8px; }
+.letter .block { flex: 1 1 100%; display: flex; flex-direction: column; gap: 0.3rem; }
+.letter textarea { width: 100%; line-height: 1.4; }
+.letter input[type=date] { font: inherit; padding: 0.25rem 0.4rem; border-radius: 6px;
+                           border: 1px solid var(--border); background: var(--card); color: var(--fg); }

@@ -7,7 +7,8 @@
 <p class="muted">Open listings you have not rated, best score first.
    Rate: 5 apply · 4 strong · 3 maybe · 2 not really · 1 irrelevant. Rated listings leave this page on reload.</p>
 {% elif mode == "shortlist" %}
-<p class="muted">Open listings you rated 4–5, best rating then nearest deadline first. Also written to <code>shortlist.md</code>.</p>
+<p class="muted">Open listings you rated 4–5, best rating then nearest deadline first. Also written to <code>shortlist.md</code>.
+   Once you apply, a listing moves to <a href="/applied">Applied</a>.</p>
 {% else %}
 <p class="muted">Everything you have rated, most recent first. Change a rating here.</p>
 {% endif %}
@@ -21,7 +22,7 @@
 {% endif %}
 {% for heading, items in sections %}
   {% if heading and items %}<h2>{{ heading }}</h2>{% endif %}
-  {% for item in items %}{{ card(item, labels) }}{% endfor %}
+  {% for item in items %}{{ card(item, labels, statuses) }}{% endfor %}
 {% endfor %}
 {% if not total %}<p class="muted">Nothing here yet.</p>{% endif %}
 {% endblock %}

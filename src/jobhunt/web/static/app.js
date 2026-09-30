@@ -72,3 +72,27 @@ document.querySelectorAll("form.rate").forEach((form) => {
     else status.textContent = "pick a rating first";
   });
 });
+
+// Listing cards: the Application dropdown posts the new status straight away.
+document.querySelectorAll("form.track").forEach((form) => {
+  const select = form.querySelector("select[name=status]");
+  const status = form.querySelector(".status");
+  select.addEventListener("change", async () => {
+    const body = new URLSearchParams({ listing_id: form.dataset.id, status: select.value });
+    status.textContent = "saving…";
+    let r;
+    try {
+      r = await fetch("/status", { method: "POST", body });
+    } catch (e) {
+      status.textContent = "failed (no connection)";
+      return;
+    }
+    if (!r.ok) {
+      status.textContent = `failed (${r.status})`;
+      return;
+    }
+    const data = await r.json();
+    status.textContent = data.status === "none" ? "cleared" : `since ${data.on}`;
+  });
+  form.addEventListener("submit", (e) => e.preventDefault());
+});
