@@ -71,6 +71,14 @@
   <small class="when">Keeps <em>Regenerate preferences</em> condensing instead of piling up as
      you rate more. Your own <code>## Manual</code> rules are never counted or touched.</small>
 </label>
+<label><input type="checkbox" name="preferences.use_letters"{% if settings.preferences.use_letters %} checked{% endif %}>
+  Learn from my motivation letters too
+  <small class="when">When on, <em>Regenerate preferences</em> (and a cross-validation) also reads
+     the letters you kept on the <a href="/applied">Applied</a> page — the latest five, a page
+     each — as your own account of what you want. They shape <code>## Learned</code> and
+     <code>## Specifics</code> only; <code>profile.md</code> stays yours. A cross-validation fold
+     never sees the letter of a listing it holds out.</small>
+</label>
 
 <h2>Cross-validation</h2>
 <label>Split the ratings into

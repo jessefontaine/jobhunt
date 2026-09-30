@@ -273,6 +273,32 @@ def test_no_listing_is_ever_scored_by_rules_or_examples_that_saw_its_rating(env)
             assert line not in learned_from, "a held-out rating trained the rules scoring it"
 
 
+def test_a_held_out_listing_never_lends_its_letter_to_the_rules_scoring_it(env):
+    from jobhunt.applications import record_status, write_letter
+
+    paths, store = env
+    for i in range(25):
+        record_status(store, paths.statuses, L(i).id, "applied")
+        write_letter(paths, L(i).id, f"LETTER-{L(i).id}")
+    settings = _settings()
+    settings.preferences.use_letters = True
+    calls = []
+    cross_validate(paths, store, _runner(_rated(), calls=calls), settings)
+
+    seen_any = False
+    learned_from = None
+    for kind, prompt in calls:
+        if kind == "learn":
+            learned_from = prompt
+            seen_any = seen_any or "LETTER-" in prompt
+            continue
+        _, _, batch = prompt.partition("# Listings to score")
+        for listing_id in (L(i).id for i in range(25)):
+            if listing_id in batch:
+                assert f"LETTER-{listing_id}" not in learned_from, "a held-out letter leaked"
+    assert seen_any, "no fold read any letter, so the check above proved nothing"
+
+
 def test_stopping_between_calls_writes_nothing(env):
     paths, store = env
     before = paths.preferences.read_text()

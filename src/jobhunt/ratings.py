@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -223,28 +224,45 @@ def render_preferences(prefs: Preferences) -> str:
     return "\n\n".join(p for p in parts if p) + "\n"
 
 
+LETTERS_HEADING = """\
+# Motivation letters (most recent first)
+
+The person wrote these for roles they applied to. They are their own words about what draws
+them to a role, so treat them as strong evidence of what they want and why — but they are
+not ratings, and one letter is one role: generalise only what recurs across letters or
+agrees with the ratings.
+"""
+
+
+def format_letters(letters: Sequence[tuple[Listing, str]]) -> str:
+    return "\n\n".join(f"## {lst.title} — {lst.employer}\n\n{text}" for lst, text in letters)
+
+
 def preferences_prompt(
     prefs: Preferences,
     rated: list[tuple[Listing, Rating]],
     scores: dict[str, Score],
     caps: PreferenceSettings,
+    letters: Sequence[tuple[Listing, str]] = (),
 ) -> str:
-    return "\n".join(
-        [
-            preferences_instructions(caps),
-            "# The person's own rules (fixed — never rewrite or contradict these)",
-            prefs.manual or "(none)",
-            "",
-            "# Previously learned rules",
-            prefs.learned or "(none)",
-            "",
-            "# Previously learned specifics",
-            prefs.specifics or "(none)",
-            "",
-            "# Rated listings (most recent first)",
-            format_rated(rated, scores=scores),
-        ]
-    )
+    """The `learn` prompt. Without `letters` it is exactly what it was before letters existed."""
+    parts = [
+        preferences_instructions(caps),
+        "# The person's own rules (fixed — never rewrite or contradict these)",
+        prefs.manual or "(none)",
+        "",
+        "# Previously learned rules",
+        prefs.learned or "(none)",
+        "",
+        "# Previously learned specifics",
+        prefs.specifics or "(none)",
+        "",
+        "# Rated listings (most recent first)",
+        format_rated(rated, scores=scores),
+    ]
+    if letters:
+        parts += ["", LETTERS_HEADING, format_letters(letters)]
+    return "\n".join(parts)
 
 
 def learn_rules(
@@ -254,14 +272,16 @@ def learn_rules(
     runner: Runner,
     model: str,
     caps: PreferenceSettings,
+    letters: Sequence[tuple[Listing, str]] = (),
 ) -> RuleSet | None:
-    """One Claude call: rules and specifics inferred from exactly the ratings given.
+    """One Claude call: rules and specifics inferred from exactly the ratings (and letters)
+    given.
 
     Nothing is read from the store and nothing is written to disk — a cross-validation fold
-    passes the ratings it is allowed to see. None when Claude's output is unusable.
+    passes the ratings and letters it is allowed to see. None when Claude's output is unusable.
     """
     try:
-        prompt = preferences_prompt(prefs, rated, scores, caps)
+        prompt = preferences_prompt(prefs, rated, scores, caps, letters)
         return RuleSet.model_validate(_extract_payload(runner(prompt, model, RULE_SCHEMA)))
     except (ValueError, ValidationError, RuntimeError):
         return None
@@ -294,8 +314,10 @@ def regenerate_preferences(
     runner: Runner,
     model: str,
     caps: PreferenceSettings | None = None,
+    letters: Sequence[tuple[Listing, str]] = (),
 ) -> bool:
-    """Rewrite `## Learned` and `## Specifics` from all ratings, leaving other sections alone.
+    """Rewrite `## Learned` and `## Specifics` from all ratings (and any `letters`), leaving
+    other sections alone.
 
     `caps` keeps the rewrite condensed (see `preferences_instructions`). Returns False and
     leaves the file untouched if Claude's output is unusable.
@@ -305,7 +327,7 @@ def regenerate_preferences(
     prefs = split_preferences(pref_path.read_text() if pref_path.exists() else "# Preferences\n")
     rated = store.all_ratings()
     scores = store.get_scores([lst.id for lst, _ in rated])
-    ruleset = learn_rules(prefs, rated, scores, runner, model, caps)
+    ruleset = learn_rules(prefs, rated, scores, runner, model, caps, letters)
     if ruleset is None:
         return False
     write_rules(paths, store, prefs, ruleset)

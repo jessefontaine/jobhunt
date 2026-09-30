@@ -723,3 +723,18 @@ def test_letter_for_an_untracked_listing_is_404(client, ws):
     fetched(ws)
     lid = listing_id(ws, "PhD vision")
     assert client.post(f"/applied/{lid}", data={"letter": "x"}).status_code == 404
+
+
+def test_settings_page_toggles_letters_in_recalibration(client, ws):
+    page = client.get("/settings").text
+    assert 'name="preferences.use_letters"' in page
+    form = {
+        f"{section}.{key}": str(value)
+        for section, values in ws.settings.model_dump(mode="json").items()
+        for key, value in values.items()
+        if not isinstance(value, bool)
+    }
+    form["preferences.use_letters"] = "on"
+    client.post("/settings", data=form)
+    assert ws.settings.preferences.use_letters is True
+    assert "use_letters: true" in ws.paths.settings_yaml.read_text()

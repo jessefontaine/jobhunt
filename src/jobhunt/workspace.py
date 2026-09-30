@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from jobhunt import crossval, pipeline
-from jobhunt.applications import record_status, write_letter
+from jobhunt.applications import letters, record_status, write_letter
 from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
@@ -262,12 +262,20 @@ class Workspace:
             force=force,
         )
 
+    def letters(self, exclude: Collection[str] = ()) -> list[tuple[Listing, str]]:
+        """The motivation letters `learn` may read: none unless the settings allow it."""
+        if not self.settings.preferences.use_letters:
+            return []
+        return letters(self.paths, self.store, exclude)
+
     def learn(self, progress: Progress = _silent) -> bool:
         """Regenerate `## Learned` in preferences.md from every rating (one Claude call)."""
         model = self.settings.scoring.model
-        progress(f"regenerating preferences with {model} (one Claude call)…")
+        read = self.letters()
+        with_letters = f" and {len(read)} motivation letter(s)" if read else ""
+        progress(f"regenerating preferences{with_letters} with {model} (one Claude call)…")
         ok = regenerate_preferences(
-            self.paths, self.store, self.runner, model, self.settings.preferences
+            self.paths, self.store, self.runner, model, self.settings.preferences, read
         )
         progress("preferences: updated" if ok else "preferences: failed (file left untouched)")
         return ok

@@ -126,3 +126,22 @@ def test_set_status_records_it_writes_the_letter_and_refreshes_the_shortlist(ws)
     assert ws.store.get_status(lst.id).note == "n"
     assert (ws.paths.applications / f"{lst.id}.md").read_text() == "Dear committee\n"
     assert "## Applications" in ws.paths.shortlist.read_text()
+
+
+def test_learn_reads_letters_only_when_the_setting_allows_it(ws):
+    ws.fetch(fixture=ws.paths.root / "listings.json")
+    lst = ws.find("https://x.org/1")
+    ws.set_status(lst.id, "applied", letter="LETTER TEXT")
+    prompts = []
+    real = ws.runner
+
+    def runner(prompt, model, schema):
+        prompts.append(prompt)
+        return real(prompt, model, schema)
+
+    ws.runner = runner
+    ws.learn()
+    assert "LETTER TEXT" not in prompts[-1]
+    ws.settings.preferences.use_letters = True
+    ws.learn()
+    assert "LETTER TEXT" in prompts[-1]

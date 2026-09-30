@@ -7,12 +7,18 @@ never reads it; the letters are, and `learn` reads them only when the user turns
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date
 from pathlib import Path
 
 from jobhunt.config import Paths
-from jobhunt.models import STATUSES, StatusEvent
+from jobhunt.models import STATUSES, Listing, StatusEvent
 from jobhunt.store import Store
+
+# What `learn` reads when letters are on: the latest few, each cut to a page, so the prompt
+# stays the size of the ratings it sits next to.
+MAX_LETTERS = 5
+MAX_LETTER_CHARS = 1500
 
 
 def record_status(
@@ -61,3 +67,28 @@ def write_letter(paths: Paths, listing_id: str, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text + "\n" if text else "")
     return path
+
+
+def letters(
+    paths: Paths,
+    store: Store,
+    exclude: Collection[str] = (),
+    limit: int = MAX_LETTERS,
+    max_chars: int = MAX_LETTER_CHARS,
+) -> list[tuple[Listing, str]]:
+    """The motivation letters of the latest applications, trimmed, for the preferences prompt.
+
+    `exclude` is how cross-validation keeps a held-out listing's letter away from the rules
+    that will score it: a letter says as plainly as a 5 that the person wanted that role.
+    """
+    out: list[tuple[Listing, str]] = []
+    for lst, _ in store.applications():
+        if lst.id in exclude:
+            continue
+        text = read_letter(paths, lst.id).strip()
+        if not text:
+            continue
+        out.append((lst, text if len(text) <= max_chars else text[:max_chars].rstrip() + "…"))
+        if len(out) == limit:
+            break
+    return out

@@ -97,3 +97,24 @@ def test_write_letter_puts_it_under_applications(tmp_path):
     path = write_letter(paths, "abc123", "Dear committee,\r\n")
     assert path == tmp_path / "applications" / "abc123.md"
     assert path.read_text() == "Dear committee,\n"
+
+
+def test_letters_are_the_latest_non_empty_ones_trimmed_and_filtered(store, tmp_path):
+    from jobhunt.applications import letters
+
+    paths = Paths(tmp_path)
+    a, b, c, d = listing(1), listing(2), listing(3), listing(4)
+    store.upsert_listings([a, b, c, d])
+    log = tmp_path / "s.jsonl"
+    record_status(store, log, a.id, "applied", on=date(2026, 9, 1))
+    record_status(store, log, b.id, "rejected", on=date(2026, 9, 20))
+    record_status(store, log, c.id, "applied", on=date(2026, 9, 10))
+    record_status(store, log, d.id, "none")  # cleared: its letter is not an application
+    write_letter(paths, a.id, "A" * 50)
+    write_letter(paths, b.id, "letter b")
+    write_letter(paths, d.id, "letter d")
+    # c has no letter
+    got = letters(paths, store, limit=5, max_chars=20)
+    assert [(lst.id, text) for lst, text in got] == [(b.id, "letter b"), (a.id, "A" * 20 + "…")]
+    assert [lst.id for lst, _ in letters(paths, store, exclude={b.id})] == [a.id]
+    assert [lst.id for lst, _ in letters(paths, store, limit=1)] == [b.id]
