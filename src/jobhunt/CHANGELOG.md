@@ -11,6 +11,8 @@ banner.
   their deadline too.
 - A new Applied page lists every application with a status filter, and keeps the date, a note
   and the motivation letter you sent for each. Every listing card has an Application dropdown.
+- New workspaces gitignore applications/, so motivation letters stay out of a pushed repo. An
+  existing workspace can add the line applications/ to its own .gitignore.
 - Settings, Preferences: learn from my motivation letters. When on, Regenerate preferences (and
   a cross-validation) also reads your latest five letters. A cross-validation fold never sees
   the letter of a listing it holds out.

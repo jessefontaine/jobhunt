@@ -88,3 +88,9 @@ def test_the_workspace_skill_covers_talking_about_roles_and_preferences():
     assert "jobhunt add" in text
     assert "jobhunt show" in text
     assert "## Manual" in text
+
+
+def test_workspace_gitignore_keeps_motivation_letters_out_of_git(tmp_path):
+    init_workspace(tmp_path / "ws")
+    lines = (tmp_path / "ws" / ".gitignore").read_text().splitlines()
+    assert "applications/" in lines

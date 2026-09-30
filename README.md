@@ -199,7 +199,7 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `config/settings.yaml` | how results are shown and how the pipeline behaves (theme, score range, digest size, scoring model, rated-list hiding, preference caps, update checks) |
 | `data/ratings.jsonl` | append-only rating log — the durable record |
 | `data/status.jsonl` | append-only application log (applied, interview, offer, …) — kept apart from ratings, never read by `learn` |
-| `applications/<id>.md` | the motivation letter you sent for that listing |
+| `applications/<id>.md` | the motivation letter you sent for that listing (gitignored: back it up yourself) |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |
 | `shortlist.md` | open listings you rated 4–5, then `## Applications` (every application, past its deadline too), refreshed by `check`, `digest`, `rate`, `apply` and `shortlist` |
