@@ -4,6 +4,12 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.11.1 — 2026-09-30
+- Fixed: after an update the browser could keep running the previous version's script, so new
+  controls such as the Application dropdown showed up but did nothing. The UI's script and
+  stylesheet are now checked for changes on every page load. If a dropdown still does nothing,
+  reload the page once.
+
 ## 0.11.0 — 2026-09-30
 - Track your applications: jobhunt apply and jobhunt status record applied, interview, offer,
   rejected or withdrawn per listing in data/status.jsonl, separate from your rating. Applied

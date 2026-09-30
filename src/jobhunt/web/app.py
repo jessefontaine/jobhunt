@@ -38,6 +38,19 @@ RESCORE_HINT = (
 )
 
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files the browser must revalidate on every load (a 304 via the ETag).
+
+    Without a Cache-Control header browsers cache heuristically, for hours after an old
+    install, so an update's new pages would run against the previous app.js.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _item(
     lst: Listing,
     score: Score | None,
@@ -63,7 +76,7 @@ def create_app(
     ws: Workspace, jobs: JobRunner | None = None, updater: Updater | None = None
 ) -> FastAPI:
     app = FastAPI(title="jobhunt", docs_url=None, redoc_url=None)
-    app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    app.mount("/static", RevalidatedStaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     jobs = jobs or JobRunner()
     updater = updater or Updater(EngineInstall.detect(), ws.paths.root)
