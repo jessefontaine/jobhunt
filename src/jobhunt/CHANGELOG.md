@@ -4,6 +4,12 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.12.0 — 2026-10-09
+- Queue and Rated have a Filter bar: a double slider for the score range, the tags present on
+  the page, and a checkbox per source. Rated can also filter on the rating itself. A filter
+  overrides the score range in Settings for that view only and is never saved; Reset goes back
+  to the normal view.
+
 ## 0.11.2 — 2026-09-30
 - The Application dropdown now has a Send button next to it. It stays grey until you pick a
   different status and only then saves it, with a link to the Applied page once it has.

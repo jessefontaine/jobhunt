@@ -58,6 +58,7 @@ scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
 | `applications.py` | application status (`data/status.jsonl` → `statuses` table; `none` clears it) and motivation letters (`applications/<id>.md`). Tracked listings leave digests and scoring; `letters()` is what `learn` reads when `preferences.use_letters` is on, and takes `exclude` so a cross-validation fold never sees a held-out listing's letter |
 | `ratings.py` | parse `rating:`/`note:` lines out of a digest, append to `ratings.jsonl`, `regenerate_preferences` (rewrites `## Learned`, keeps `## Manual`) |
 | `crossval.py` | k-fold cross-validation of a preferences rewrite: `plan` prices a run with no Claude call, `cross_validate` measures both arms on held-out ratings and writes only through `gate`. Fold rules are never kept — an accepted run retrains on every rating |
+| `filters.py` | the Queue/Rated filter bar: `Filters` (score range, tags, sources, ratings) parsed from the query string, never saved; `facets` lists what the page offers |
 | `digest.py` | render the ranked markdown the user rates in (`## Shortlist`, numbered queue, `## Unscored`) |
 | `store.py` | SQLite: listings, scores, ratings, a `meta` table (e.g. `learned_at`) |
 | `config.py`, `models.py` | `Paths` + `sources.yaml` loading (pydantic); `Listing`, `Score`, `Rating` |

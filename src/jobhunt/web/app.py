@@ -20,6 +20,7 @@ from jobhunt.config import ConfigError, parse_config
 from jobhunt.crossval import NotEnoughRatings, TooExpensive, last_run
 from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
+from jobhunt.filters import Filters, facets
 from jobhunt.models import STATUSES, Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import learned_at, record_rating
 from jobhunt.settings import DisplaySettings, save_settings, settings_from_form
@@ -266,7 +267,12 @@ def create_app(
     # -- listing pages -------------------------------------------------------
 
     def listing_page(
-        request: Request, title: str, mode: str, sections: list, hidden: int = 0
+        request: Request,
+        title: str,
+        mode: str,
+        sections: list,
+        hidden: int = 0,
+        bar: dict | None = None,
     ) -> HTMLResponse:
         total = sum(len(items) for _, items in sections)
         return render(
@@ -277,9 +283,35 @@ def create_app(
             sections=sections,
             total=total,
             hidden=hidden,
+            bar=bar,
             labels=RATING_LABELS,
             statuses=STATUSES,
         )
+
+    def filter_bar(
+        request: Request, default: Filters, rows: list, keep: dict[str, str] | None = None
+    ) -> tuple[Filters, dict]:
+        """The view's filters from the query string, and what the bar above the cards shows.
+
+        `rows` are (listing, score, rating) before filtering: the bar offers what is there.
+        `keep` is query state that is not a filter (Rated's `all`), carried through Apply and
+        Reset alike.
+        """
+        found = facets(rows)
+        chosen = Filters.from_query(request.query_params, default)
+        chosen = chosen.within([name for name, _ in found.sources])
+        keep = keep or {}
+        reset = request.url.path
+        if keep:
+            reset += "?" + "&".join(f"{k}={v}" for k, v in keep.items())
+        return chosen, {
+            "filters": chosen,
+            "facets": found,
+            "active": chosen != default,
+            "default": default,
+            "keep": keep,
+            "reset": reset,
+        }
 
     def _sorted(listings: list[Listing], scores: dict[str, Score]) -> list[Listing]:
         """Order the scored part of the queue the way the settings ask for."""
@@ -298,20 +330,19 @@ def create_app(
         display = ws.settings.display
         candidates = store.candidate_listings(today)
         scores = store.get_scores([lst.id for lst in candidates])
-        listings = [
-            lst
-            for lst in candidates
-            if display.in_range(scores[lst.id].score if lst.id in scores else None)
-        ]
+        rows = [(lst, scores.get(lst.id), None) for lst in candidates]
+        default = Filters(min_score=display.min_score, max_score=display.max_score)
+        filters, bar = filter_bar(request, default, rows)
+        listings = [lst for lst, score, _ in rows if filters.keeps(lst, score)]
         scored = _sorted([lst for lst in listings if lst.id in scores], scores)
         unscored = [lst for lst in listings if lst.id not in scores]
         sections = [
             ("", [_item(lst, scores[lst.id], None, today, display) for lst in scored]),
             ("Unscored", [_item(lst, None, None, today, display) for lst in unscored]),
         ]
-        return listing_page(
-            request, "Queue", "queue", sections, hidden=len(candidates) - len(listings)
-        )
+        hidden = len(candidates) - len(listings)
+        bar["hidden"] = hidden if bar["active"] else 0
+        return listing_page(request, "Queue", "queue", sections, hidden=hidden, bar=bar)
 
     @app.get("/shortlist", response_class=HTMLResponse)
     def shortlist(request: Request):
@@ -365,14 +396,22 @@ def create_app(
             for lst, rating in rows
             if all or not rules.hidden(rating.rating, rating.rated_at, now)
         ]
-        ids = [lst.id for lst, _ in kept]
-        scores, statuses = store.get_scores(ids), store.get_statuses(ids)
+        scores = store.get_scores([lst.id for lst, _ in kept])
+        filters, bar = filter_bar(
+            request,
+            Filters(),
+            [(lst, scores.get(lst.id), rating) for lst, rating in kept],
+            keep={"all": "1"} if all else None,
+        )
+        shown = [(lst, r) for lst, r in kept if filters.keeps(lst, scores.get(lst.id), r)]
+        statuses = store.get_statuses([lst.id for lst, _ in shown])
         items = [
             _item(lst, scores.get(lst.id), rating, today, ws.settings.display, statuses.get(lst.id))
-            for lst, rating in kept
+            for lst, rating in shown
         ]
+        bar["hidden"] = len(kept) - len(shown)
         return listing_page(
-            request, "Rated", "rated", [("", items)], hidden=len(rows) - len(kept)
+            request, "Rated", "rated", [("", items)], hidden=len(rows) - len(kept), bar=bar
         )
 
     @app.post("/ratings")
