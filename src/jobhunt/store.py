@@ -1,4 +1,4 @@
-"""SQLite persistence for listings, scores, ratings and application statuses."""
+"""SQLite persistence for listings, scores, ratings, application statuses and discards."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
-from jobhunt.models import Listing, Rating, Score, StatusEvent, canonical_url
+from jobhunt.models import DiscardEvent, Listing, Rating, Score, StatusEvent, canonical_url
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS statuses (
     note TEXT NOT NULL,
     at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS discards (
+    listing_id TEXT PRIMARY KEY REFERENCES listings(id),
+    discarded INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    by TEXT NOT NULL,
+    at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -57,6 +64,9 @@ CREATE TABLE IF NOT EXISTS meta (
 
 # Listings with an application in progress (or over): out of the queue and out of scoring.
 NOT_TRACKED = "l.id NOT IN (SELECT listing_id FROM statuses WHERE status != 'none')"
+# Listings on the discard pile: out of the queue, scoring, calibration and learning.
+DISCARDED = "SELECT listing_id FROM discards WHERE discarded = 1"
+NOT_DISCARDED = f"l.id NOT IN ({DISCARDED})"
 
 
 def _iso(d: date | datetime | None) -> str | None:
@@ -160,6 +170,7 @@ class Store:
               AND r.listing_id IS NULL
               AND (l.deadline IS NULL OR l.deadline >= ?)
               AND {NOT_TRACKED}
+              AND {NOT_DISCARDED}
             ORDER BY l.fetched_at DESC
             """,
             (today.isoformat(),),
@@ -180,6 +191,7 @@ class Store:
             LEFT JOIN ratings r ON r.listing_id = l.id
             WHERE (l.deadline IS NULL OR l.deadline >= ?)
               AND {NOT_TRACKED}
+              AND {NOT_DISCARDED}
               {rated_clause}
             ORDER BY l.fetched_at DESC
             """,
@@ -282,16 +294,20 @@ class Store:
         return self._row_to_rating(row) if row else None
 
     def rated_ids(self) -> set[str]:
-        return {r[0] for r in self.conn.execute("SELECT listing_id FROM ratings")}
+        """Rated listings, leaving out the discarded ones (as every rating reader here does)."""
+        rows = self.conn.execute(
+            f"SELECT listing_id FROM ratings WHERE listing_id NOT IN ({DISCARDED})"
+        )
+        return {r[0] for r in rows}
 
     def rated_examples(self, limit: int) -> list[tuple[Listing, Rating]]:
         """Strong signals (rating >= 4 or <= 2), most recent first, for few-shot prompting."""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT l.*, r.rating AS r_rating, r.note AS r_note, r.digest AS r_digest,
                    r.rated_at AS r_rated_at
             FROM ratings r JOIN listings l ON l.id = r.listing_id
-            WHERE r.rating >= 4 OR r.rating <= 2
+            WHERE (r.rating >= 4 OR r.rating <= 2) AND {NOT_DISCARDED}
             ORDER BY r.rated_at DESC, l.rowid DESC
             LIMIT ?
             """,
@@ -328,6 +344,7 @@ class Store:
             WHERE r.listing_id IS NULL
               AND (l.deadline IS NULL OR l.deadline >= ?)
               AND {NOT_TRACKED}
+              AND {NOT_DISCARDED}
             ORDER BY l.fetched_at DESC
             """,
             (today.isoformat(),),
@@ -345,6 +362,7 @@ class Store:
             WHERE r.rating >= ?
               AND (l.deadline IS NULL OR l.deadline >= ?)
               AND {NOT_TRACKED}
+              AND {NOT_DISCARDED}
             ORDER BY r.rating DESC, l.deadline IS NULL, l.deadline, l.title
             """,
             (min_rating, today.isoformat()),
@@ -352,12 +370,17 @@ class Store:
         return [(self._row_to_listing(row), self._row_to_joined_rating(row)) for row in rows]
 
     def all_ratings(self) -> list[tuple[Listing, Rating]]:
-        """Every rated listing, most recent rating first."""
+        """Every rated listing that is not discarded, most recent rating first.
+
+        Calibration, cross-validation and `learn` all read ratings through here (or
+        `rated_examples`), so a discarded listing's rating reaches none of them.
+        """
         rows = self.conn.execute(
-            """
+            f"""
             SELECT l.*, r.rating AS r_rating, r.note AS r_note, r.digest AS r_digest,
                    r.rated_at AS r_rated_at
             FROM ratings r JOIN listings l ON l.id = r.listing_id
+            WHERE {NOT_DISCARDED}
             ORDER BY r.rated_at DESC, l.rowid DESC
             """
         ).fetchall()
@@ -435,6 +458,59 @@ class Store:
             at=datetime.fromisoformat(row["at"]),
         )
 
+    # -- discards -----------------------------------------------------------
+
+    def save_discard(self, event: DiscardEvent) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO discards (listing_id, discarded, reason, by, at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (event.listing_id, int(event.discarded), event.reason, event.by, _iso(event.at)),
+            )
+
+    def get_discard(self, listing_id: str) -> DiscardEvent | None:
+        row = self.conn.execute(
+            "SELECT * FROM discards WHERE listing_id = ?", (listing_id,)
+        ).fetchone()
+        return self._row_to_discard(row) if row else None
+
+    def discarded(self) -> list[tuple[Listing, DiscardEvent]]:
+        """The discard pile, most recently discarded first."""
+        rows = self.conn.execute(
+            """
+            SELECT l.*, d.discarded AS d_discarded, d.reason AS d_reason, d.by AS d_by,
+                   d.at AS d_at
+            FROM discards d JOIN listings l ON l.id = d.listing_id
+            WHERE d.discarded = 1
+            ORDER BY d.at DESC, l.title
+            """
+        ).fetchall()
+        return [
+            (
+                self._row_to_listing(row),
+                DiscardEvent(
+                    listing_id=row["id"],
+                    discarded=bool(row["d_discarded"]),
+                    reason=row["d_reason"],
+                    by=row["d_by"],
+                    at=datetime.fromisoformat(row["d_at"]),
+                ),
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _row_to_discard(row: sqlite3.Row) -> DiscardEvent:
+        return DiscardEvent(
+            listing_id=row["listing_id"],
+            discarded=bool(row["discarded"]),
+            reason=row["reason"],
+            by=row["by"],
+            at=datetime.fromisoformat(row["at"]),
+        )
+
     # -- meta ---------------------------------------------------------------
 
     def get_meta(self, key: str) -> str | None:
@@ -449,8 +525,9 @@ class Store:
 
     def ratings_since(self, when: datetime | None) -> int:
         """Ratings recorded after `when` (every rating when `when` is None)."""
+        kept = f"listing_id NOT IN ({DISCARDED})"
         if when is None:
-            return self.conn.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
+            return self.conn.execute(f"SELECT COUNT(*) FROM ratings WHERE {kept}").fetchone()[0]
         return self.conn.execute(
-            "SELECT COUNT(*) FROM ratings WHERE rated_at > ?", (when.isoformat(),)
+            f"SELECT COUNT(*) FROM ratings WHERE rated_at > ? AND {kept}", (when.isoformat(),)
         ).fetchone()[0]

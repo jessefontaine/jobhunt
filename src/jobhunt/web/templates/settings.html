@@ -47,6 +47,13 @@
   <input type="number" name="scoring.examples" min="0" max="200" value="{{ settings.scoring.examples }}">
   <small class="when">How many of your ratings the scorer sees as examples.</small>
 </label>
+<label><input type="checkbox" name="scoring.auto_discard"{% if settings.scoring.auto_discard %} checked{% endif %}>
+  Discard listings I cannot apply to
+  <small class="when">Scoring also asks whether a listing has a hard requirement your profile
+     does not meet (a PhD for a postdoc, years of experience you lack). When on, those go
+     straight to <a href="/discarded">Discarded</a> with the reason, instead of the queue.
+     Nothing is lost: restore any of them there.</small>
+</label>
 <label>Shortlist from rating
   <input type="number" name="shortlist.min_rating" min="1" max="5" value="{{ settings.shortlist.min_rating }}">
   <small class="when">Ratings at or above this land on the Shortlist and in <code>shortlist.md</code>.</small>

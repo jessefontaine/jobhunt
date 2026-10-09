@@ -17,6 +17,7 @@ in this directory is personal data — never publish it.
 | `shortlist.md` | regenerated: open listings rated 4–5, then `## Applications` |
 | `data/ratings.jsonl` | append-only rating log, the durable record — never edit or rewrite it |
 | `data/status.jsonl` | append-only application log (`jobhunt apply` / `jobhunt status`) — never edit or rewrite it |
+| `data/discards.jsonl` | append-only discard pile log (`jobhunt discard` / `jobhunt restore`, and scoring's ineligible flags) — never edit or rewrite it |
 | `applications/<id>.md` | the user's motivation letter for that listing; theirs to edit, gitignored — never commit it. With `preferences.use_letters` on, `learn` reads the latest ones |
 | `data/jobs.sqlite` | every listing seen plus scores; a rebuildable cache, gitignored |
 

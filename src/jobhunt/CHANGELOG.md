@@ -4,6 +4,19 @@ Newest first. Every PR bumps `version` in `pyproject.toml` and adds a `## x.y.z 
 entry here; the browser UI shows this file on the dashboard and the new entries in its update
 banner.
 
+## 0.13.0 — 2026-10-09
+- A discard pile for listings you cannot apply to. Scoring now also asks whether a listing has
+  a hard requirement your profile does not meet, such as a postdoc that needs a PhD or years of
+  experience you lack, and puts those on the new Discarded page with the reason instead of in
+  the queue. Turn this off in Settings, Scoring.
+- Discarded listings stay in the store, so a fetch never brings them back or scores them again.
+  A discarded rating is kept but counts in neither calibration, cross-validation nor learning.
+- Every card on Queue and Rated has a discard button, and with a filter on, Discard all N shown
+  takes exactly what the page shows (on Rated, filter on rating 1 to discard all your 1s).
+  Restore puts a listing back, and scoring never discards a restored listing again.
+- jobhunt discard and jobhunt restore do the same from the command line, recorded in
+  data/discards.jsonl; jobhunt rate --rebuild replays that log too.
+
 ## 0.12.0 — 2026-10-09
 - Queue and Rated have a Filter bar: a double slider for the score range, the tags present on
   the page, and a checkbox per source. Rated can also filter on the rating itself. A filter

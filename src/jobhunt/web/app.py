@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -20,7 +21,7 @@ from jobhunt.config import ConfigError, parse_config
 from jobhunt.crossval import NotEnoughRatings, TooExpensive, last_run
 from jobhunt.digest import newest_digest
 from jobhunt.feedback import issue_url
-from jobhunt.filters import Filters, facets
+from jobhunt.filters import Filters, Query, facets
 from jobhunt.models import STATUSES, Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import learned_at, record_rating
 from jobhunt.settings import DisplaySettings, save_settings, settings_from_form
@@ -107,6 +108,7 @@ def create_app(
             "listings": store.count_listings(),
             "ratings": len(store.rated_ids()),
             "applications": len(store.applications()),
+            "discarded": len(store.discarded()),
             "since_learned": store.ratings_since(learned),
             "learned_at": learned,
             "newest_digest": digest.name if digest else None,
@@ -289,19 +291,23 @@ def create_app(
         )
 
     def filter_bar(
-        request: Request, default: Filters, rows: list, keep: dict[str, str] | None = None
+        path: str,
+        query: Query,
+        default: Filters,
+        rows: list,
+        keep: dict[str, str] | None = None,
     ) -> tuple[Filters, dict]:
-        """The view's filters from the query string, and what the bar above the cards shows.
+        """The view's filters from its query (or the bulk form), and what the bar shows.
 
         `rows` are (listing, score, rating) before filtering: the bar offers what is there.
         `keep` is query state that is not a filter (Rated's `all`), carried through Apply and
         Reset alike.
         """
         found = facets(rows)
-        chosen = Filters.from_query(request.query_params, default)
+        chosen = Filters.from_query(query, default)
         chosen = chosen.within([name for name, _ in found.sources])
         keep = keep or {}
-        reset = request.url.path
+        reset = path
         if keep:
             reset += "?" + "&".join(f"{k}={v}" for k, v in keep.items())
         return chosen, {
@@ -324,15 +330,15 @@ def create_app(
             case _:
                 return sorted(listings, key=lambda lst: scores[lst.id].score, reverse=True)
 
-    @app.get("/queue", response_class=HTMLResponse)
-    def queue(request: Request):
+    def queue_view(query: Query) -> tuple[list, dict]:
+        """The queue's sections and filter bar for `query`; `bar["ids"]` is what it shows."""
         store, today = ws.store, date.today()
         display = ws.settings.display
         candidates = store.candidate_listings(today)
         scores = store.get_scores([lst.id for lst in candidates])
         rows = [(lst, scores.get(lst.id), None) for lst in candidates]
         default = Filters(min_score=display.min_score, max_score=display.max_score)
-        filters, bar = filter_bar(request, default, rows)
+        filters, bar = filter_bar("/queue", query, default, rows)
         listings = [lst for lst, score, _ in rows if filters.keeps(lst, score)]
         scored = _sorted([lst for lst in listings if lst.id in scores], scores)
         unscored = [lst for lst in listings if lst.id not in scores]
@@ -340,9 +346,17 @@ def create_app(
             ("", [_item(lst, scores[lst.id], None, today, display) for lst in scored]),
             ("Unscored", [_item(lst, None, None, today, display) for lst in unscored]),
         ]
-        hidden = len(candidates) - len(listings)
-        bar["hidden"] = hidden if bar["active"] else 0
-        return listing_page(request, "Queue", "queue", sections, hidden=hidden, bar=bar)
+        bar["filtered_out"] = len(candidates) - len(listings)
+        bar["hidden"] = bar["filtered_out"] if bar["active"] else 0
+        bar["ids"] = [lst.id for lst in scored + unscored]
+        return sections, bar
+
+    @app.get("/queue", response_class=HTMLResponse)
+    def queue(request: Request):
+        sections, bar = queue_view(request.query_params)
+        return listing_page(
+            request, "Queue", "queue", sections, hidden=bar["filtered_out"], bar=bar
+        )
 
     @app.get("/shortlist", response_class=HTMLResponse)
     def shortlist(request: Request):
@@ -385,8 +399,8 @@ def create_app(
             job=jobs.current,
         )
 
-    @app.get("/rated", response_class=HTMLResponse)
-    def rated(request: Request, all: bool = False):
+    def rated_view(query: Query, all: bool) -> tuple[list, dict, int]:
+        """Rated's cards and filter bar for `query`, and how many the age rule hides."""
         store, today = ws.store, date.today()
         now = datetime.now()
         rules = ws.settings.rated
@@ -398,7 +412,8 @@ def create_app(
         ]
         scores = store.get_scores([lst.id for lst, _ in kept])
         filters, bar = filter_bar(
-            request,
+            "/rated",
+            query,
             Filters(),
             [(lst, scores.get(lst.id), rating) for lst, rating in kept],
             keep={"all": "1"} if all else None,
@@ -410,9 +425,13 @@ def create_app(
             for lst, rating in shown
         ]
         bar["hidden"] = len(kept) - len(shown)
-        return listing_page(
-            request, "Rated", "rated", [("", items)], hidden=len(rows) - len(kept), bar=bar
-        )
+        bar["ids"] = [lst.id for lst, _ in shown]
+        return [("", items)], bar, len(rows) - len(kept)
+
+    @app.get("/rated", response_class=HTMLResponse)
+    def rated(request: Request, all: bool = False):
+        sections, bar, hidden = rated_view(request.query_params, all)
+        return listing_page(request, "Rated", "rated", sections, hidden=hidden, bar=bar)
 
     @app.post("/ratings")
     def post_rating(
@@ -435,6 +454,61 @@ def create_app(
             "changed": saved is not None,
             "since_learned": store.ratings_since(learned_at(store)),
         }
+
+    # -- discard pile --------------------------------------------------------
+
+    @app.post("/discard")
+    def post_discard(listing_id: str = Form(...), reason: str = Form("")):
+        """JSON for the card's script."""
+        if ws.store.get_listing(listing_id) is None:
+            return JSONResponse({"error": "no such listing"}, status_code=404)
+        event = ws.discard(listing_id, reason.strip())
+        return {"listing_id": listing_id, "discarded": event.discarded}
+
+    @app.post("/discard/bulk")
+    async def discard_bulk(request: Request):
+        """Discard exactly what a filtered Queue or Rated view shows, then go back to it.
+
+        The view is rebuilt from the posted filters rather than trusting a list of ids, so
+        what goes is what the page would show now. An unfiltered view is refused: emptying
+        the whole queue is never one click.
+        """
+        form = await request.form()
+        view = form.get("view")
+        if view == "queue":
+            _, bar = queue_view(form)
+        elif view == "rated":
+            _, bar, _ = rated_view(form, all=form.get("all") == "1")
+        else:
+            raise HTTPException(404, "no such view")
+        if not bar["active"]:
+            raise HTTPException(400, "set a filter first: bulk discard takes what it shows")
+        ws.discard_many(bar["ids"], str(form.get("reason", "")).strip())
+        params = [(k, v) for k, v in form.multi_items() if k not in ("view", "reason")]
+        back = f"/{view}" + (f"?{urlencode(params)}" if params else "")
+        return RedirectResponse(back, status_code=303)
+
+    @app.get("/discarded", response_class=HTMLResponse)
+    def discarded(request: Request):
+        store, today = ws.store, date.today()
+        rows = store.discarded()
+        ids = [lst.id for lst, _ in rows]
+        scores = store.get_scores(ids)
+        items = [
+            _item(lst, scores.get(lst.id), store.get_rating(lst.id), today, ws.settings.display)
+            | {"discard": event}
+            for lst, event in rows
+        ]
+        return listing_page(request, "Discarded", "discarded", [("", items)])
+
+    @app.post("/restore")
+    def post_restore(listing_id: str = Form(...), next: str = Form("/discarded")):
+        current = ws.store.get_discard(listing_id)
+        if current is None or not current.discarded:
+            raise HTTPException(404, "that listing is not discarded")
+        ws.restore(listing_id)
+        local = next.startswith("/") and not next.startswith("//")
+        return RedirectResponse(next if local else "/discarded", status_code=303)
 
     # -- applications --------------------------------------------------------
 

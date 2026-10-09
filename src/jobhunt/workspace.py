@@ -12,7 +12,8 @@ from jobhunt.applications import letters, record_status, write_letter
 from jobhunt.calibration import Agreement, agreement, expected_rating, surprise
 from jobhunt.config import Config, Paths, load_config
 from jobhunt.digest import RunInfo
-from jobhunt.models import Listing, Rating, Score, StatusEvent
+from jobhunt.discards import record_discard, record_restore
+from jobhunt.models import DiscardEvent, Listing, Rating, Score, StatusEvent
 from jobhunt.ratings import regenerate_preferences
 from jobhunt.scoring import Runner, ScoreRunResult, claude_runner, score_listings
 from jobhunt.settings import Settings, load_settings
@@ -111,6 +112,8 @@ class Workspace:
         )
         if not dry_run:
             progress(f"scored: {result.scored} listing(s), {result.failed} failed")
+            if result.discarded:
+                progress(f"discarded: {result.discarded} ineligible listing(s) (see Discarded)")
             for err in result.errors:
                 progress(f"  ! scoring: {err}")
         return result
@@ -180,6 +183,9 @@ class Workspace:
             rating = store.get_rating(listing.id)
             rated = f", rated {rating.rating}/5" if rating else ""
             progress(f"already in the store as {known.source}: {known.title}{rated}")
+            pile = store.get_discard(listing.id)
+            if pile is not None and pile.discarded:
+                progress("it is on the discard pile: restore it to see it in the queue again")
         progress(f"added: {listing.title} — {listing.employer}")
         if not score or existing is not None:
             return listing, existing
@@ -194,6 +200,9 @@ class Workspace:
         )
         for err in result.errors:
             progress(f"  ! scoring: {err}")
+        pile = self.store.get_discard(listing.id)
+        if result.discarded and pile is not None:
+            progress(f"discarded as ineligible: {pile.reason} (restore it from Discarded)")
         return listing, self.store.get_score(listing.id)
 
     def find(self, ref: str) -> Listing | None:
@@ -213,6 +222,30 @@ class Workspace:
         event = record_status(self.store, self.paths.statuses, listing_id, status, on, note)
         if letter is not None:
             write_letter(self.paths, listing_id, letter)
+        self.shortlist()
+        return event
+
+    def discard(self, listing_id: str, reason: str = "") -> DiscardEvent:
+        """Put one listing on the discard pile; refresh shortlist.md (it may have been on it)."""
+        event = record_discard(self.store, self.paths.discards, listing_id, reason)
+        self.shortlist()
+        return event
+
+    def discard_many(self, ids: list[str], reason: str = "") -> int:
+        """Discard every listing in `ids` that is not discarded yet; return how many were."""
+        store = self.store
+        n = 0
+        for listing_id in ids:
+            current = store.get_discard(listing_id)
+            if current is None or not current.discarded:
+                record_discard(store, self.paths.discards, listing_id, reason)
+                n += 1
+        self.shortlist()
+        return n
+
+    def restore(self, listing_id: str) -> DiscardEvent:
+        """Take a listing off the pile: back to the queue (or Rated), and never auto-discarded."""
+        event = record_restore(self.store, self.paths.discards, listing_id)
         self.shortlist()
         return event
 

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from jobhunt.calibration import surprise
 from jobhunt.config import Paths, ScoringConfig
+from jobhunt.discards import record_discard
 from jobhunt.models import Listing, Rating, RoleType, Score
 from jobhunt.store import Store
 
@@ -29,6 +30,7 @@ class ScoreItem(BaseModel):
     area_tags: list[str] = Field(default_factory=list)
     why: str = ""
     concerns: str = ""
+    ineligible: str = ""
 
 
 class ScoreBatch(BaseModel):
@@ -56,7 +58,13 @@ explicitly open to their level.
 
 For each listing return: id (copy exactly), score, role_type, area_tags (2-5 short
 lowercase tags), why (ONE sentence naming the specific overlap with the profile),
-concerns (ONE sentence on the main risk, or empty string).
+concerns (ONE sentence on the main risk, or empty string), and ineligible.
+
+ineligible is an empty string unless this person cannot apply at all: the listing requires a
+degree or career level they do not have (a postdoc needs a PhD they have not finished) or a
+hard minimum of experience they clearly lack, and is not open to their level. Then it is ONE
+sentence naming that requirement. It is for hard requirements only, not for poor fit: a
+listing they could apply to but would not want gets a low score and an empty ineligible.
 
 Return ONLY JSON of the form {"scores": [ {...}, ... ]} — no prose.
 """
@@ -168,6 +176,7 @@ def parse_response(raw: str, expected_ids: set[str], model: str) -> list[Score]:
             why=item.why.strip(),
             concerns=item.concerns.strip(),
             model=model,
+            ineligible=item.ineligible.strip(),
         )
         for item in batch.scores
         if item.id in expected_ids
@@ -258,6 +267,7 @@ def score_batch(
 class ScoreRunResult:
     scored: int = 0
     failed: int = 0
+    discarded: int = 0  # flagged ineligible and put on the discard pile
     errors: list[str] = field(default_factory=list)
 
 
@@ -274,6 +284,20 @@ def by_surprise(
         return (0, -surprise(score.score, rating.rating)) if score else (1, 0)
 
     return sorted(examples, key=rank)
+
+
+def _discard_ineligible(store: Store, paths: Paths, scores: list[Score]) -> int:
+    """Put what Claude called ineligible on the discard pile; return how many.
+
+    A listing the user restored stays restored: their call beats the scorer's.
+    """
+    n = 0
+    for score in scores:
+        if not score.ineligible or store.get_discard(score.listing_id) is not None:
+            continue
+        record_discard(store, paths.discards, score.listing_id, score.ineligible, by="scoring")
+        n += 1
+    return n
 
 
 def _chunks(items: list[Listing], size: int) -> list[list[Listing]]:
@@ -335,7 +359,10 @@ def score_listings(
                 continue
             store.save_scores(scores)
             result.scored += len(scores)
-            progress(f"  batch {n}/{len(batches)}: {len(scores)} scored")
+            dropped = _discard_ineligible(store, paths, scores) if cfg.auto_discard else 0
+            result.discarded += dropped
+            also = f", {dropped} discarded as ineligible" if dropped else ""
+            progress(f"  batch {n}/{len(batches)}: {len(scores)} scored{also}")
             break
         else:
             result.failed += len(batch)

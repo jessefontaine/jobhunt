@@ -862,3 +862,99 @@ def test_status_form_never_redirects_off_site(client, ws):
         follow_redirects=False,
     )
     assert r.headers["location"] == "/"
+
+
+# -- discard pile -------------------------------------------------------------
+
+
+def test_cards_on_queue_and_rated_have_a_discard_button(ws):
+    page = _queue_with_tags(ws).get("/queue").text
+    assert 'class="discard"' in page
+
+
+def test_discard_posts_json_and_the_listing_leaves_the_queue(ws):
+    client = _queue_with_tags(ws)
+    lid = listing_id(ws, "RA fMRI")
+    r = client.post("/discard", data={"listing_id": lid})
+    assert r.status_code == 200 and r.json()["discarded"] is True
+    assert "RA fMRI" not in client.get("/queue").text
+    assert client.post("/discard", data={"listing_id": "nope"}).status_code == 404
+
+
+def test_discarded_page_lists_the_pile_and_restores(ws):
+    client = _queue_with_tags(ws)
+    lid = listing_id(ws, "RA fMRI")
+    ws.discard(lid, "needs a PhD")
+    page = client.get("/discarded").text
+    assert "RA fMRI" in page and "needs a PhD" in page and "Restore" in page
+    r = client.post("/restore", data={"listing_id": lid}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/discarded"
+    assert "RA fMRI" not in client.get("/discarded").text
+    assert "RA fMRI" in client.get("/queue").text
+
+
+def test_discarding_a_rated_listing_takes_it_off_rated(ws):
+    from jobhunt.models import Rating
+
+    client = _queue_with_tags(ws)
+    lid = listing_id(ws, "RA fMRI")
+    ws.store.save_rating(Rating(listing_id=lid, rating=1, digest="web"))
+    client.post("/discard", data={"listing_id": lid})
+    assert "RA fMRI" not in client.get("/rated").text
+    assert "RA fMRI" in client.get("/discarded").text
+
+
+def test_bulk_discard_takes_exactly_what_the_filters_show(ws):
+    client = _queue_with_tags(ws)
+    page = client.get("/queue?max=50").text
+    assert "Discard all 2 shown" in page  # RA fMRI (40) and the unscored Data job
+    r = client.post(
+        "/discard/bulk",
+        data={"view": "queue", "max": "50", "reason": "filtered out"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/queue?max=50"
+    page = client.get("/queue").text
+    assert "PhD vision" in page and "RA fMRI" not in page and "Data job" not in page
+    assert "filtered out" in client.get("/discarded").text
+
+
+def test_bulk_discard_needs_a_filter(ws):
+    client = _queue_with_tags(ws)
+    assert "Discard all" not in client.get("/queue").text
+    r = client.post("/discard/bulk", data={"view": "queue"}, follow_redirects=False)
+    assert r.status_code == 400
+    assert "PhD vision" in client.get("/queue").text
+
+
+def test_bulk_discard_on_rated_by_rating(ws):
+    from jobhunt.models import Rating
+
+    client = _queue_with_tags(ws)
+    ra, phd = listing_id(ws, "RA fMRI"), listing_id(ws, "PhD vision")
+    ws.store.save_rating(Rating(listing_id=ra, rating=1, digest="web"))
+    ws.store.save_rating(Rating(listing_id=phd, rating=4, digest="web"))
+    r = client.post(
+        "/discard/bulk", data={"view": "rated", "rating": "1"}, follow_redirects=False
+    )
+    assert r.headers["location"] == "/rated?rating=1"
+    assert ws.store.rated_ids() == {phd}
+
+
+def test_dashboard_counts_the_discard_pile(ws):
+    client = _queue_with_tags(ws)
+    ws.discard(listing_id(ws, "RA fMRI"))
+    assert "<b>1</b> discarded" in client.get("/").text
+
+
+def test_settings_page_toggles_auto_discard(client, ws):
+    page = client.get("/settings").text
+    assert 'name="scoring.auto_discard" checked' in page
+    form = {
+        f"{section}.{key}": str(value)
+        for section, values in ws.settings.model_dump(mode="json").items()
+        for key, value in values.items()
+        if not isinstance(value, bool)
+    }
+    client.post("/settings", data=form)
+    assert ws.settings.scoring.auto_discard is False

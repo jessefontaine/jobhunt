@@ -20,6 +20,7 @@ from jobhunt.crossval import (
 )
 from jobhunt.crossval import render as render_crossval
 from jobhunt.digest import newest_digest
+from jobhunt.discards import rebuild_discards
 from jobhunt.models import STATUSES
 from jobhunt.ratings import ingest_ratings, rebuild_from_jsonl
 from jobhunt.scaffold import DEFAULT_ENGINE_URL, init_workspace
@@ -175,6 +176,8 @@ def rate(
         typer.echo(f"rebuilt {n} rating record(s) from {ws.paths.ratings}")
         n = rebuild_statuses(store, ws.paths.statuses)
         typer.echo(f"rebuilt {n} status record(s) from {ws.paths.statuses}")
+        n = rebuild_discards(store, ws.paths.discards)
+        typer.echo(f"rebuilt {n} discard record(s) from {ws.paths.discards}")
     if digest_file is None:
         digest_file = newest_digest(ws.paths.digests)
         if digest_file is None:
@@ -325,6 +328,35 @@ def status(
     found = _found(ws, listing)
     event = ws.set_status(found.id, state, _on(on), note)
     typer.echo(f"{found.title}: {event.status} {event.on.isoformat()}")
+
+
+@app.command()
+def discard(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+    reason: str = typer.Option("", help="Why you cannot apply (shown on the Discarded page)"),
+) -> None:
+    """Put a listing on the discard pile: out of the queue, calibration and learning."""
+    ws = _workspace(ctx)
+    found = _found(ws, listing)
+    ws.discard(found.id, reason)
+    typer.echo(f"{found.title}: discarded")
+
+
+@app.command()
+def restore(
+    ctx: typer.Context,
+    listing: str = typer.Argument(..., help="Listing URL or id"),
+) -> None:
+    """Take a listing off the discard pile; scoring will not discard it again."""
+    ws = _workspace(ctx)
+    found = _found(ws, listing)
+    current = ws.store.get_discard(found.id)
+    if current is None or not current.discarded:
+        typer.echo(f"{found.title} is not on the discard pile", err=True)
+        raise typer.Exit(1)
+    ws.restore(found.id)
+    typer.echo(f"{found.title}: restored")
 
 
 @app.command()

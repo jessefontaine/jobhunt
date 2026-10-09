@@ -9,12 +9,25 @@
 {% elif mode == "shortlist" %}
 <p class="muted">Open listings you rated 4–5, best rating then nearest deadline first. Also written to <code>shortlist.md</code>.
    Once you apply, a listing moves to <a href="/applied">Applied</a>.</p>
+{% elif mode == "discarded" %}
+<p class="muted">Listings you cannot apply to: flagged ineligible by scoring, or discarded by you.
+   They stay in the store so a fetch never brings them back, and their ratings stay out of
+   calibration and learning. Restore one to put it back where it was.</p>
 {% else %}
 <p class="muted">Everything you have rated, most recent first. Change a rating here.</p>
 {% endif %}
 {% if bar %}{% include "_filters.html" %}{% endif %}
 {% if bar and bar.hidden %}
 <p class="muted">{{ bar.hidden }} hidden by the filters (<a href="{{ bar.reset }}">Reset</a>).</p>
+{% endif %}
+{% if bar and bar.active and bar.ids %}
+<form method="post" action="/discard/bulk" class="bulk"
+      data-confirm="Discard all {{ bar.ids|length }} listings shown? They leave this page, calibration and learning. The Discarded page can restore them.">
+  <input type="hidden" name="view" value="{{ mode }}">
+  {% for k, v in request.query_params.multi_items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <input type="text" name="reason" placeholder="reason (optional)">
+  <button type="submit" class="danger">Discard all {{ bar.ids|length }} shown</button>
+</form>
 {% endif %}
 {% if hidden and mode == "queue" and not bar.active %}
 <p class="muted">{{ hidden }} hidden by your score filter

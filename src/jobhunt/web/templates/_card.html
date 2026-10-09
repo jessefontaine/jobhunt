@@ -18,6 +18,13 @@
   {% if lst.description or lst.summary %}
   <details><summary>Description</summary><pre class="description">{{ lst.description or lst.summary }}</pre></details>
   {% endif %}
+  {% if item.discard %}
+  <form class="restore" method="post" action="/restore">
+    <input type="hidden" name="listing_id" value="{{ lst.id }}">
+    <span class="muted">Discarded {{ item.discard.at.strftime("%Y-%m-%d") }} {{ "by scoring" if item.discard.by == "scoring" else "by you" }}{% if item.discard.reason %}: {{ item.discard.reason }}{% endif %}</span>
+    <button type="submit">Restore</button>
+  </form>
+  {% endif %}
   <form class="rate" data-id="{{ lst.id }}">
     <span class="buttons">
     {% for n in [5, 4, 3, 2, 1] %}
@@ -26,6 +33,7 @@
     </span>
     <input type="text" name="note" placeholder="note (optional)" value="{{ rating.note if rating else '' }}">
     <span class="status">{% if rating %}rated {{ rating.rating }}/5 on {{ rating.rated_at.strftime("%Y-%m-%d") }}{% endif %}</span>
+    {% if mode in ("queue", "rated") %}<button type="button" class="discard" title="Cannot apply: off the queue, out of calibration and learning (restore it from Discarded)">discard</button>{% endif %}
   </form>
   {% if statuses %}
   {% set current = item.status.status if item.status else "none" %}

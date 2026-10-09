@@ -130,3 +130,34 @@ document.querySelectorAll("[data-range]").forEach((range) => {
   range.classList.add("dual");
   paint();
 });
+
+// Listing cards: discard takes the card off the page (the Discarded page can restore it).
+document.querySelectorAll("button.discard").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const card = btn.closest(".card");
+    const status = card.querySelector("form.rate .status");
+    btn.disabled = true;
+    let r;
+    try {
+      r = await fetch("/discard", { method: "POST", body: new URLSearchParams({ listing_id: card.dataset.id }) });
+    } catch (e) {
+      status.textContent = "failed (no connection)";
+      btn.disabled = false;
+      return;
+    }
+    if (!r.ok) {
+      status.textContent = `failed (${r.status})`;
+      btn.disabled = false;
+      return;
+    }
+    card.classList.add("discarded");
+    status.innerHTML = 'discarded · <a href="/discarded">Discarded</a>';
+  });
+});
+
+// Bulk discard asks first: it can take a whole filtered page at once.
+document.querySelectorAll("form[data-confirm]").forEach((form) => {
+  form.addEventListener("submit", (e) => {
+    if (!confirm(form.dataset.confirm)) e.preventDefault();
+  });
+});
