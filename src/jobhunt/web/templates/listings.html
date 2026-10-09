@@ -12,7 +12,11 @@
 {% else %}
 <p class="muted">Everything you have rated, most recent first. Change a rating here.</p>
 {% endif %}
-{% if hidden and mode == "queue" %}
+{% if bar %}{% include "_filters.html" %}{% endif %}
+{% if bar and bar.hidden %}
+<p class="muted">{{ bar.hidden }} hidden by the filters (<a href="{{ bar.reset }}">Reset</a>).</p>
+{% endif %}
+{% if hidden and mode == "queue" and not bar.active %}
 <p class="muted">{{ hidden }} hidden by your score filter
    (<a href="/settings">Settings</a>: {{ settings.display.min_score }}–{{ settings.display.max_score }}).</p>
 {% elif hidden and mode == "rated" %}

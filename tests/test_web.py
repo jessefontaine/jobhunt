@@ -394,6 +394,82 @@ def test_queue_hides_listings_outside_the_score_range(ws):
     assert "1 hidden by your score filter" in r.text
 
 
+def _queue_with_tags(ws):
+    """Two open listings scored by hand (different tags), plus one from another source."""
+    from jobhunt.models import Listing, Score
+
+    fetched(ws)
+    ws.store.upsert_listings(
+        [Listing(source="indeed", title="Data job", employer="Co", url="https://y.org/1")]
+    )
+    ws.store.save_scores(
+        [
+            Score(listing_id=listing_id(ws, "PhD vision"), score=90, area_tags=["vision", "ml"]),
+            Score(listing_id=listing_id(ws, "RA fMRI"), score=40, area_tags=["fmri"]),
+        ]
+    )
+    return web(ws, updater(ws))
+
+
+def test_queue_filter_bar_offers_what_is_in_the_queue(ws):
+    page = _queue_with_tags(ws).get("/queue").text
+    assert 'class="filters"' in page
+    assert 'name="tag" value="vision"' in page and 'name="tag" value="fmri"' in page
+    assert 'name="source" value="indeed" checked' in page
+    assert 'name="source" value="fixture" checked' in page
+    assert 'name="min"' in page and 'name="max"' in page
+    assert ">Reset<" not in page  # nothing to reset yet
+
+
+def test_queue_score_filter_overrides_the_settings_for_that_view_only(ws):
+    client = _queue_with_tags(ws)
+    ws.settings.display.min_score = 85
+    assert "RA fMRI" not in client.get("/queue").text
+    page = client.get("/queue?min=30&max=60").text
+    assert "RA fMRI" in page and "PhD vision" not in page
+    assert "Data job" not in page  # unscored, and the floor is above 0
+    assert ">Reset<" in page and 'href="/queue"' in page
+    assert ws.settings.display.min_score == 85  # never written back
+
+
+def test_queue_filters_on_tags_and_sources(ws):
+    client = _queue_with_tags(ws)
+    page = client.get("/queue?tag=fmri&tag=vision").text
+    assert "RA fMRI" in page and "PhD vision" in page and "Data job" not in page
+    page = client.get("/queue?tag=fmri").text
+    assert "RA fMRI" in page and "PhD vision" not in page
+    assert 'name="tag" value="fmri" checked' in page
+    page = client.get("/queue?source=indeed").text
+    assert "Data job" in page and "RA fMRI" not in page
+    assert 'name="source" value="fixture">' in page
+    assert "2 hidden by the filters" in page
+
+
+def test_queue_with_every_source_ticked_is_not_filtered(ws):
+    page = _queue_with_tags(ws).get("/queue?source=indeed&source=fixture").text
+    assert "Data job" in page and "RA fMRI" in page
+    assert ">Reset<" not in page
+
+
+def test_rated_page_filters_on_rating(ws):
+    from jobhunt.models import Rating
+
+    client = _queue_with_tags(ws)
+    ws.store.save_rating(Rating(listing_id=listing_id(ws, "RA fMRI"), rating=1, digest="web"))
+    ws.store.save_rating(Rating(listing_id=listing_id(ws, "PhD vision"), rating=4, digest="web"))
+    page = client.get("/rated").text
+    assert 'name="rating" value="1"' in page and 'name="rating" value="4"' in page
+    page = client.get("/rated?rating=1").text
+    assert "RA fMRI" in page and "PhD vision" not in page
+    assert 'href="/rated"' in page and ">Reset<" in page
+
+
+def test_rated_filter_keeps_show_all(ws):
+    client = _queue_with_tags(ws)
+    page = client.get("/rated?all=1").text
+    assert 'name="all" value="1"' in page
+
+
 def test_rated_page_hides_old_low_ratings(ws):
     from datetime import datetime
 

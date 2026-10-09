@@ -1,0 +1,41 @@
+{# The filter bar above Queue and Rated: a GET form, so a view is a URL and nothing is saved. #}
+{% set f = bar.filters %}{% set fc = bar.facets %}
+<details class="filters"{% if bar.active %} open{% endif %}>
+<summary>Filter{% if bar.active %} <small class="muted">(on)</small>{% endif %}</summary>
+<form method="get" action="{{ request.url.path }}">
+  {% for k, v in bar.keep.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <div class="row">
+    <span class="label">score</span>
+    <div class="range" data-range>
+      <input type="range" name="min" min="0" max="100" value="{{ f.min_score }}" aria-label="lowest score">
+      <input type="range" name="max" min="0" max="100" value="{{ f.max_score }}" aria-label="highest score">
+    </div>
+    <output data-range-label>{{ f.min_score }}–{{ f.max_score }}</output>
+  </div>
+  {% if fc.ratings %}
+  <div class="row">
+    <span class="label">rating</span>
+    {% for n, count in fc.ratings %}<label class="chip"><input type="checkbox" name="rating" value="{{ n }}"{% if n in f.ratings %} checked{% endif %}> {{ n }} <small>{{ count }}</small></label>{% endfor %}
+  </div>
+  {% endif %}
+  {% if fc.sources %}
+  <div class="row">
+    <span class="label">sources</span>
+    {% for name, count in fc.sources %}<label class="chip"><input type="checkbox" name="source" value="{{ name }}"{% if not f.sources or name in f.sources %} checked{% endif %}> {{ name }} <small>{{ count }}</small></label>{% endfor %}
+  </div>
+  {% endif %}
+  {% if fc.tags %}
+  <div class="row">
+    <span class="label">tags</span>
+    <div class="tags-pick">
+    {% for tag, count in fc.tags %}<label class="chip"><input type="checkbox" name="tag" value="{{ tag }}"{% if tag in f.tags %} checked{% endif %}> {{ tag }} <small>{{ count }}</small></label>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div class="row buttons">
+    <button type="submit">Apply</button>
+    {% if bar.active %}<a href="{{ bar.reset }}" class="reset">Reset</a>{% endif %}
+    <span class="muted">Only this view: nothing here changes your Settings.</span>
+  </div>
+</form>
+</details>

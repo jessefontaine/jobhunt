@@ -128,7 +128,10 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
   the caps that keep learned preferences condensed, whether `learn` reads your motivation
   letters, and the update check interval.
 - **Queue** — open, unrated listings best-first; click 1–5 (and type a note) to rate. Ratings go
-  straight into `data/ratings.jsonl` and the store, so digests are just a record here.
+  straight into `data/ratings.jsonl` and the store, so digests are just a record here. The
+  *Filter* bar narrows the view by score range (a double slider), the tags and the sources
+  present in the queue; it overrides the Settings range for that view only, and *Reset* drops
+  it. Rated has the same bar, plus a filter on the rating itself.
 - **Applied** — every listing you applied to, filterable by status, each with a date, a note
   and the motivation letter you sent (saved to `applications/<id>.md`). Any card's
   *Application* dropdown puts a listing here.

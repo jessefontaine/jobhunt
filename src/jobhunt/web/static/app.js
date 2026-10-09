@@ -108,3 +108,25 @@ document.querySelectorAll("form.track").forEach((form) => {
     else status.innerHTML = `${data.status} since ${data.on} · <a href="/applied">Applied</a>`;
   });
 });
+
+// Filter bar: the two score sliders sit on one track. Dragging one past the other pushes it
+// along, and the label shows the range. Without this script they are two plain sliders.
+document.querySelectorAll("[data-range]").forEach((range) => {
+  const [low, high] = range.querySelectorAll("input[type=range]");
+  const label = range.parentElement.querySelector("[data-range-label]");
+  const paint = () => {
+    label.textContent = `${low.value}–${high.value}`;
+    range.style.setProperty("--low", `${low.value}%`);
+    range.style.setProperty("--high", `${high.value}%`);
+  };
+  low.addEventListener("input", () => {
+    if (Number(low.value) > Number(high.value)) high.value = low.value;
+    paint();
+  });
+  high.addEventListener("input", () => {
+    if (Number(high.value) < Number(low.value)) low.value = high.value;
+    paint();
+  });
+  range.classList.add("dual");
+  paint();
+});
