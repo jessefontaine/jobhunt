@@ -45,7 +45,8 @@ Data flow: sources (and `jobhunt add` for a pasted link) → `data/jobs.sqlite` 
 (`claude -p`, batches of 10) → digest → rate (`data/ratings.jsonl` + store) → learn
 (`## Learned` / `## Specifics` in `profile/preferences.md`, from ratings and — opt-in — the
 motivation letters). `jobhunt apply`/`status` track applications apart from ratings. Rated listings are excluded from
-scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
+scoring, not just from digests: `--rescore` skips them unless `--include-rated`. Discarded
+listings (`discards.py`) are excluded from everything but the Discarded page.
 
 | module | does |
 |--------|------|
@@ -56,6 +57,7 @@ scoring, not just from digests: `--rescore` skips them unless `--include-rated`.
 | `sources/<site>.py` | one scraper each; `fixture.py` loads listings from JSON for tests and `check --fixture`; `manual.py` is not in the registry — it turns one pasted URL into a Listing for `jobhunt add` |
 | `scoring.py` | `build_prompt(profile, preferences, cv, examples, batch)` and `claude_runner` (`claude -p --output-format json --json-schema …`); the `Runner` is injected so tests never call Claude |
 | `applications.py` | application status (`data/status.jsonl` → `statuses` table; `none` clears it) and motivation letters (`applications/<id>.md`). Tracked listings leave digests and scoring; `letters()` is what `learn` reads when `preferences.use_letters` is on, and takes `exclude` so a cross-validation fold never sees a held-out listing's letter |
+| `discards.py` | the discard pile (`data/discards.jsonl` → `discards` table): scoring discards what Claude flags `ineligible`, the user discards/restores. The store leaves discarded listings out of the queue, scoring, `all_ratings` and `rated_examples`, so calibration, cross-validation and `learn` never see them; a restore is recorded so scoring never re-discards it |
 | `ratings.py` | parse `rating:`/`note:` lines out of a digest, append to `ratings.jsonl`, `regenerate_preferences` (rewrites `## Learned`, keeps `## Manual`) |
 | `crossval.py` | k-fold cross-validation of a preferences rewrite: `plan` prices a run with no Claude call, `cross_validate` measures both arms on held-out ratings and writes only through `gate`. Fold rules are never kept — an accepted run retrains on every rating |
 | `filters.py` | the Queue/Rated filter bar: `Filters` (score range, tags, sources, ratings) parsed from the query string, never saved; `facets` lists what the page offers |

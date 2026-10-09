@@ -508,3 +508,23 @@ def test_calibration_reports_the_last_cross_validation(root, monkeypatch):
     result = run(root, "calibration")
     assert result.exit_code == 0, result.output
     assert "Last cross-validation" in result.output
+
+
+def test_discard_and_restore(root):
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    result = run(root, "discard", "https://x.org/3", "--reason", "needs 5 years in industry")
+    assert result.exit_code == 0, result.output
+    assert "RA fMRI: discarded" in result.output
+    run(root, "digest")
+    assert "RA fMRI" not in newest_digest(root / "digests").read_text()
+    assert "needs 5 years" in (root / "data" / "discards.jsonl").read_text()
+    result = run(root, "restore", "https://x.org/3")
+    assert result.exit_code == 0 and "RA fMRI: restored" in result.output
+    assert run(root, "restore", "https://x.org/3").exit_code == 1  # not discarded any more
+    run(root, "discard", "https://x.org/3")
+    (root / "data" / "jobs.sqlite").unlink()
+    run(root, "check", "--fixture", str(root / "listings.json"), "--no-score")
+    result = run(root, "rate", "--rebuild", "--no-learn")
+    assert "rebuilt 3 discard record(s)" in result.output
+    run(root, "digest")
+    assert "RA fMRI" not in newest_digest(root / "digests").read_text()

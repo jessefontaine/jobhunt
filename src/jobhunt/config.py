@@ -27,6 +27,10 @@ class Paths:
         return self.root / "data" / "status.jsonl"
 
     @property
+    def discards(self) -> Path:
+        return self.root / "data" / "discards.jsonl"
+
+    @property
     def applications(self) -> Path:
         """One motivation letter per application: `applications/<listing id>.md`."""
         return self.root / "applications"
@@ -64,6 +68,9 @@ class ScoringConfig(BaseModel):
     model: str = "sonnet"
     batch_size: int = 10
     examples: int = 20
+    # Put listings Claude calls ineligible (a degree or level the profile lacks) on the discard
+    # pile instead of the queue.
+    auto_discard: bool = True
 
 
 class DigestConfig(BaseModel):

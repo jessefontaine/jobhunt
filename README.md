@@ -131,7 +131,14 @@ If you see `OAuth session expired` / `preferences: failed`, run `claude login` i
   straight into `data/ratings.jsonl` and the store, so digests are just a record here. The
   *Filter* bar narrows the view by score range (a double slider), the tags and the sources
   present in the queue; it overrides the Settings range for that view only, and *Reset* drops
-  it. Rated has the same bar, plus a filter on the rating itself.
+  it. Rated has the same bar, plus a filter on the rating itself. With a filter on, *Discard all
+  N shown* puts exactly those listings on the discard pile.
+- **Discarded** — listings you cannot apply to: what scoring flagged as ineligible (a postdoc
+  needing a PhD you do not have, years of required experience), with its reason, and what you
+  discarded with a card's *discard* button or a bulk discard. They stay in the store so a fetch
+  never brings them back, and a discarded rating counts in neither calibration nor learning.
+  *Restore* puts one back; scoring never discards a restored listing again (turn automatic
+  discards off in Settings).
 - **Applied** — every listing you applied to, filterable by status, each with a date, a note
   and the motivation letter you sent (saved to `applications/<id>.md`). Any card's
   *Application* dropdown puts a listing here.
@@ -163,10 +170,11 @@ editing, to your network.
 | `jobhunt show URL-or-id` | print a listing with its score, why, concerns, your rating and application status |
 | `jobhunt apply URL-or-id [--date D] [--note …] [--letter FILE]` | record that you applied (and keep your motivation letter in `applications/`); the listing leaves the queue and joins `## Applications` in `shortlist.md` |
 | `jobhunt status URL-or-id STATE [--date D] [--note …]` | move an application along: `interview`, `offer`, `rejected`, `withdrawn` (`none` clears it) |
+| `jobhunt discard URL-or-id [--reason …]` / `jobhunt restore URL-or-id` | put a listing you cannot apply to on the discard pile (out of the queue, calibration and learning), or take it back off |
 | `jobhunt digest` | re-render a digest from the store |
 | `jobhunt shortlist` | print open listings rated 4–5 and write `shortlist.md` |
 | `jobhunt calibration` | check the scores against your ratings: rank correlation and the mean rating per score band |
-| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest (`--rebuild` replays `data/ratings.jsonl` and `data/status.jsonl` first) |
+| `jobhunt rate [FILE] [--force] [--no-learn] [--rebuild]` | ingest ratings from the newest (or given) digest (`--rebuild` replays `data/ratings.jsonl`, `data/status.jsonl` and `data/discards.jsonl` first) |
 | `jobhunt sources` | list sources and whether they are enabled |
 | `jobhunt learn` | regenerate the learned preferences from every rating (one Claude call) |
 | `jobhunt learn --cross-validate` | measure the rewrite on held-out ratings first, and write it only if it scores better (`--dry-run` prices it, `--force` writes anyway) |
@@ -202,6 +210,7 @@ Blocked sites are never worked around; you get a link to open by hand.
 | `config/settings.yaml` | how results are shown and how the pipeline behaves (theme, score range, digest size, scoring model, rated-list hiding, preference caps, update checks) |
 | `data/ratings.jsonl` | append-only rating log — the durable record |
 | `data/status.jsonl` | append-only application log (applied, interview, offer, …) — kept apart from ratings, never read by `learn` |
+| `data/discards.jsonl` | append-only discard log: what scoring flagged ineligible or you discarded, and every restore |
 | `applications/<id>.md` | the motivation letter you sent for that listing (gitignored: back it up yourself) |
 | `data/jobs.sqlite` | all listings ever seen + scores (gitignored, rebuildable) |
 | `digests/` | one ranked markdown file per run — where rating happens |

@@ -176,3 +176,12 @@ form.inline { display: inline; }
 .filters .range.dual input::-moz-range-thumb { pointer-events: auto; width: 1rem; height: 1rem;
   border-radius: 50%; background: var(--accent); border: 2px solid var(--card); cursor: pointer; }
 .filters .reset { font-size: 0.9em; }
+/* Discard pile */
+button.discard { margin-left: auto; font-size: 0.85em; padding: 0.15rem 0.6rem; color: var(--muted); }
+button.discard:hover { color: var(--danger); border-color: var(--danger); }
+.card.discarded { opacity: 0.45; }
+.card form.restore { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;
+                     margin: 0.3rem 0; }
+.bulk { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0 0 1rem; }
+button.danger, button[type=submit].danger { background: transparent; color: var(--danger);
+                                            border-color: var(--danger); }

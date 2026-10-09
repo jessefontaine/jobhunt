@@ -1,4 +1,4 @@
-"""Core data types: Listing, Score, Rating, StatusEvent."""
+"""Core data types: Listing, Score, Rating, StatusEvent, DiscardEvent."""
 
 from __future__ import annotations
 
@@ -58,6 +58,9 @@ class Score(BaseModel):
     concerns: str = ""
     model: str = ""
     scored_at: datetime = Field(default_factory=datetime.now)
+    # Why this person cannot apply at all (a degree or level they lack), or "". Not stored with
+    # the score: scoring turns it into a DiscardEvent, which is where the reason is kept.
+    ineligible: str = ""
 
 
 class Rating(BaseModel):
@@ -66,6 +69,21 @@ class Rating(BaseModel):
     note: str = ""
     digest: str = ""
     rated_at: datetime = Field(default_factory=datetime.now)
+
+
+class DiscardEvent(BaseModel):
+    """A listing put on the discard pile, or taken off it.
+
+    A discarded listing stays in the store, so a fetch that sees it again does not bring it
+    back, but it leaves the queue, scoring, calibration and learning: it says the person cannot
+    apply, not what they like. Its rating, if any, is kept for when it is restored.
+    """
+
+    listing_id: str
+    discarded: bool = True  # False: restored, and scoring may not discard it again
+    reason: str = ""
+    by: Literal["scoring", "user"] = "user"
+    at: datetime = Field(default_factory=datetime.now)
 
 
 class StatusEvent(BaseModel):
